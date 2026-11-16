@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Reception</title>
+  <meta name="description" content="Reception kiosk">
+
+  <!-- Home screen / full screen web app -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Reception">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="theme-color" content="#F6F4EF">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-180.png">
+  <link rel="icon" type="image/png" href="icons/icon-180.png">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="dryrun-flag" aria-hidden="true">DRY RUN</div>
+
+  <!-- 1. Home: language selection (multilingual, each text carries its own lang) -->
+  <main id="screen-home" class="screen screen-home">
+    <header class="home-header">
+      <h1 tabindex="-1" lang="ja">受付</h1>
+      <p class="home-sub">
+        <span lang="en">Reception</span> ·
+        <span lang="ko">접수</span> ·
+        <span lang="de">Empfang</span>
+      </p>
+      <p class="home-prompt">
+        <span lang="ja">言語を選んでください</span>
+        <span lang="en">Please choose your language</span>
+        <span lang="ko">언어를 선택해 주세요</span>
+        <span lang="de">Bitte wählen Sie Ihre Sprache</span>
+      </p>
+    </header>
+    <div class="lang-grid">
+      <button type="button" class="btn btn-lang" data-lang="ja" lang="ja">
+        <span class="flag" aria-hidden="true">🇯🇵</span><span class="lang-name">日本語</span>
+      </button>
+      <button type="button" class="btn btn-lang" data-lang="en" lang="en">
+        <span class="flag" aria-hidden="true">🇬🇧</span><span class="lang-name">English</span>
+      </button>
+      <button type="button" class="btn btn-lang" data-lang="ko" lang="ko">
+        <span class="flag" aria-hidden="true">🇰🇷</span><span class="lang-name">한국어</span>
+      </button>
+      <button type="button" class="btn btn-lang" data-lang="de" lang="de">
+        <span class="flag" aria-hidden="true">🇩🇪</span><span class="lang-name">Deutsch</span>
+      </button>
+    </div>
+  </main>
+
+  <!-- 2. Service selection (skipped if only one service is active) -->
+  <main id="screen-services" class="screen" hidden>
+    <div class="topbar">
+      <button type="button" class="btn btn-back" data-back="home">
+        <span aria-hidden="true">‹</span> <span data-i18n="back"></span>
+      </button>
+    </div>
+    <div class="content">
+      <h1 tabindex="-1" data-i18n="servicesTitle"></h1>
+      <div id="service-grid" class="service-grid"></div>
+    </div>
+  </main>
+
+  <!-- 3. Request: name, persons, now / later (slot selection appears in place of the buttons) -->
+  <main id="screen-request" class="screen" hidden>
+    <div class="topbar">
+      <button type="button" id="btn-request-back" class="btn btn-back">
+        <span aria-hidden="true">‹</span> <span data-i18n="back"></span>
+      </button>
+    </div>
+    <div class="content content-wide">
+      <h1 tabindex="-1" id="request-title"></h1>
+      <p class="intro" id="request-intro"></p>
+
+      <div class="request-layout">
+        <form id="request-form" class="request-form" novalidate autocomplete="off">
+          <div class="field">
+            <label for="name-input" data-i18n="nameLabel"></label>
+            <input id="name-input" name="lastname" type="text" maxlength="30" data-i18n-placeholder="namePlaceholder"
+                   autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false"
+                   enterkeyhint="done" required aria-describedby="name-error">
+            <p id="name-error" class="field-error" role="alert"></p>
+          </div>
+
+          <div class="field">
+            <span class="label" id="people-label" data-i18n="peopleLabel"></span>
+            <div class="stepper" role="group" aria-labelledby="people-label">
+              <button type="button" id="people-less" class="btn btn-step" data-i18n-aria="peopleLess">−</button>
+              <output id="people-value" class="stepper-value" aria-live="polite"></output>
+              <button type="button" id="people-more" class="btn btn-step" data-i18n-aria="peopleMore">+</button>
+            </div>
+          </div>
+        </form>
+
+        <div class="request-panel">
+          <div id="choose-panel" class="actions">
+            <button type="button" id="btn-now" class="btn btn-primary">
+              <span class="btn-title" data-i18n="now"></span>
+              <span class="btn-hint" data-i18n="nowHint"></span>
+            </button>
+            <button type="button" id="btn-later" class="btn btn-secondary">
+              <span class="btn-title" data-i18n="later"></span>
+              <span class="btn-hint" data-i18n="laterHint"></span>
+            </button>
+          </div>
+
+          <section id="slot-panel" class="slot-panel" aria-labelledby="slots-title" hidden>
+            <h2 id="slots-title" data-i18n="slotsTitle"></h2>
+            <p id="slots-info" class="slots-info"></p>
+            <p id="slots-loading" class="slots-msg" data-i18n="slotsLoading" hidden></p>
+            <div id="slots-load-error" class="notice" hidden>
+              <p data-i18n="slotsError"></p>
+              <button type="button" id="btn-retry" class="btn btn-secondary" data-i18n="retry"></button>
+            </div>
+            <div id="slot-grid" class="slot-grid"></div>
+            <div id="no-slots" class="notice" hidden>
+              <p data-i18n="noSlots"></p>
+              <p id="no-slots-now-text" data-i18n="noSlotsNow"></p>
+              <button type="button" id="btn-noslots-now" class="btn btn-primary">
+                <span class="btn-title" data-i18n="now"></span>
+              </button>
+            </div>
+          </section>
+
+          <p id="request-status" class="status" aria-live="polite"></p>
+          <p id="request-error" class="send-error" role="alert"></p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- 4. Confirmation -->
+  <main id="screen-confirm" class="screen screen-confirm" hidden>
+    <div class="content content-center">
+      <svg class="check" viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="32" cy="32" r="30"></circle>
+        <path d="M19 33l9 9 17-19"></path>
+      </svg>
+      <h1 tabindex="-1" data-i18n="confirmTitle"></h1>
+      <p id="confirm-text" class="confirm-text" role="status"></p>
+      <div id="dryrun-box" class="dryrun-box" hidden>
+        <p class="dryrun-label">DRY RUN – Google Chat message (not sent):</p>
+        <pre id="dryrun-message" lang="ja"></pre>
+      </div>
+      <button type="button" id="btn-done" class="btn btn-secondary btn-done" data-i18n="done"></button>
+      <p id="confirm-countdown" class="countdown"></p>
+    </div>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="i18n.js"></script>
+  <script src="logic.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
