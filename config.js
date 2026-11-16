@@ -11,12 +11,12 @@ var KIOSK_CONFIG = {
   /* ---------- frontend ---------- */
 
   // The /exec URL of your Google Apps Script web app deployment.
-  appsScriptUrl: 'https://script.google.com/macros/s/PASTE_YOUR_DEPLOYMENT_ID_HERE/exec',
+  appsScriptUrl: 'https://script.google.com/macros/s/AKfycbzxjKWYb3OdZ38zxDIfHoY9lDvgDMGeZZFBdCv2Hn7xbwIcyCdRTUH37KR1IfNwkfJOlQ/exec',
 
   // true  = nothing is sent; slots are simulated locally with sample bookings,
   //         the chat message is printed to the console and the confirmation screen.
   // false = live mode (Apps Script backend + Google Calendar).
-  dryRun: true,
+  dryRun: false,
 
   // Dry run only: simulate the time of day, e.g. '10:20' (null = real clock).
   dryRunClock: null,
