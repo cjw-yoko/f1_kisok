@@ -3,51 +3,76 @@
  *
  * Project files in the Apps Script editor:
  *   Code.gs          this file
- *   Config.gs        copy of config.js   (services, opening blocks, durations)
+ *   Config.gs        copy of config.js   (companies, services, opening blocks, durations)
  *   Logic.gs         copy of logic.js    (slot calculation, validation, texts)
  *   appsscript.json  time zone Asia/Tokyo, scopes
  *
  * Script Properties:
- *   WEBHOOK_URL                 Google Chat webhook (default for all services)
- *   WEBHOOK_URL_<SERVICE>       optional per-service override, e.g. WEBHOOK_URL_INSOLE
- *   CAL_ID_INSOLE, CAL_ID_STUDIO  calendar IDs (one calendar per room)
+ *   WEBHOOK_URL                   Google Chat webhook – ALL messages go to this one space
+ *   CAL_ID_INSOLE, CAL_ID_STUDIO  calendar IDs (insoles + foot care share CAL_ID_INSOLE)
+ *   MENTION_...                   optional "users/<id>" of the person in charge, see config.js
+ *                                 (mentionProperty of departments, services and delivery)
  *
  * API
  *   GET  ?action=slots&service=insole&persons=2   -> {ok, date, duration, slots:[{start,end}]}
- *   POST body (text/plain, JSON) {requestId, lang, service, type, name, persons, start?}
- *        -> {ok:true, start?, end?} | {ok:false, reason:'taken'|'invalid'|...}
- *   JSONP fallback: add &callback=fn to a GET; bookings via GET ?action=book&data=<JSON>
+ *   POST body (text/plain, JSON), one of
+ *     service:  {requestId, lang, service, type: 'now'|'later', name, persons, start?}
+ *     visit:    {requestId, lang, kind: 'visit', host, department, name, company?}
+ *     delivery: {requestId, lang, kind: 'delivery', carrier, company?}
+ *     -> {ok:true, start?, end?} | {ok:false, reason:'taken'|'invalid'|...}
+ *   JSONP fallback: add &callback=fn to a GET; requests via GET ?action=book&data=<JSON>
  *
  * Privacy: "later" bookings create a calendar event (name, time, persons,
- * language, escort). Nothing else is stored; logs never contain names.
+ * language, escort). Visits and deliveries are only sent to the chat.
+ * Nothing else is stored; logs never contain names.
  */
 /* global KIOSK_CONFIG, KioskLogic */
 
 /* ===== Chat and calendar texts (easy to change) =====
- * Placeholders: {service} {name} {persons} {start} {end} {langCode} {langName} {escort}
+ * Placeholders: {service} {name} {persons} {start} {end} {company} {department}
+ *               {floor} {langCode} {langName} {escort}
+ * *text* is bold in Google Chat.
  * The kiosk's dry-run preview uses a copy in config.js (chatTextPreview).
  */
 var CHAT_TEXT = {
-  now: '🔔 お客様がいらっしゃいました｜{service}｜{name}様（{persons}名）',
-  later: '🕒 ご予約｜{service}｜{start}–{end}｜{name}様（{persons}名）',
-  serviceLabel: { insole: '👟 インソール', studio: '📸 フォトスタジオ' },
-  // Second line if the language is in the service's escortLanguages ...
+  // First line of EVERY message: notifies everybody in the space, so nothing is
+  // overlooked. Set to '' to switch it off. The person in charge (MENTION_...)
+  // is added to the same line.
+  everyone: '<users/all>',
+
+  // Services (ZEPHI insoles / foot care, photo studio)
+  now: '*🔔 お客様がいらっしゃいました｜{service}*\n{name}様（{persons}名）',
+  later: '*🕒 ご予約が入りました｜{service}｜{start}–{end}*\n{name}様（{persons}名）',
+  serviceLabel: { insole: '👟 ZEPHI インソール', footcare: '🦶 ZEPHI フットケア', studio: '📸 フォトスタジオ' },
+  // Extra line if the language is in the service's escortLanguages ...
   escortNote: {
     en: '🇬🇧 英語の同行が必要です',
     de: '🇩🇪 ドイツ語の同行が必要です',
     ko: '🇰🇷 韓国語の同行が必要です'
   },
-  // ... otherwise this informational line (Japanese: none).
+  // ... otherwise this informational line (Japanese: none). Also used for visitors.
   infoNote: {
     en: '🇬🇧 英語のお客様',
     de: '🇩🇪 ドイツ語のお客様',
     ko: '🇰🇷 韓国語のお客様（対応可能）'
   },
-  eventTitle: '{name}様（{persons}名）{langCode}',
+  // Calendar event for "later" bookings (shared insole/foot care calendar shows the service)
+  eventTitle: '{service}｜{name}様（{persons}名）{langCode}',
   eventDescription: '言語: {langName}（{langCode}）\n同行: {escort}',
   escortYes: '必要',
   escortNo: '不要',
-  langName: { ja: '日本語', en: '英語', ko: '韓国語', de: 'ドイツ語' }
+  langName: { ja: '日本語', en: '英語', ko: '韓国語', de: 'ドイツ語' },
+
+  // Visitors of YOKO / WYS Relation (usually with an appointment)
+  visit: '*🏢 来客です｜{company}｜{department}*',
+  visitor: '{name}様',
+  visitorWithCompany: '{name}様（{company}）',
+  visitOther: '⚠️ 担当部署が未定です。どなたか対応をお願いします。',
+  visitFooter: '→ {floor}階へご案内しました。担当の方は対応をお願いします。',
+  companyLabel: { yoko: 'YOKO', wys: 'WYS Relation' },
+
+  // Parcel services
+  delivery: '*📦 配達業者が到着しました｜{company}*\n→ どなたか1階の受付で対応をお願いします。'
 };
 
 var SETTINGS = {
@@ -123,15 +148,30 @@ function slotOptions_(service, persons, day) {
   };
 }
 
-/* ===== Requests (now / later) ===== */
+/* ===== Requests (service now / later, visit, delivery) ===== */
+
+/** Key for the duplicate check (hashed, so no personal data sits in the cache). */
+function duplicateKey_(req) {
+  if (req.kind === 'visit') return 'visit|' + req.host + '|' + req.department + '|' + req.name.toLowerCase();
+  if (req.kind === 'delivery') return 'delivery|' + req.company.toLowerCase();
+  return req.service + '|' + req.name.toLowerCase();
+}
+
+function dispatch_(req) {
+  if (req.kind === 'visit' || req.kind === 'delivery') {
+    return notify_(req) ? { ok: true } : { ok: false, reason: 'notify_failed' };
+  }
+  var service = KioskLogic.findService(KIOSK_CONFIG, req.service);
+  // "now": chat message only – no calendar entry, no slot check (the team decides on site).
+  if (req.type !== 'later') return notify_(req) ? { ok: true } : { ok: false, reason: 'notify_failed' };
+  return bookLater_(req, service);
+}
 
 function handleRequest_(data) {
   var check = KioskLogic.validateRequest(data, KIOSK_CONFIG);
   if (!check.ok) return { ok: false, reason: 'invalid', error: check.error };
   var req = check.value;
-  var service = KioskLogic.findService(KIOSK_CONFIG, req.service);
   var cache = CacheService.getScriptCache();
-
   var reqKey = req.requestId ? 'req_' + req.requestId : null;
 
   var lock = LockService.getScriptLock();
@@ -142,29 +182,23 @@ function handleRequest_(data) {
     var previous = reqKey ? cache.get(reqKey) : null;
     if (previous) return JSON.parse(previous);
 
-    var dupKey = 'dup_' + sha256Hex_(req.service + '|' + req.name.toLowerCase());
+    var dupKey = 'dup_' + sha256Hex_(duplicateKey_(req));
     if (cache.get(dupKey)) {
       result = { ok: true, duplicate: true };
     } else if (isRateLimited_(cache)) {
       result = { ok: false, reason: 'rate_limited' };
     } else {
-      result = req.type === 'later' ? bookLater_(req, service) : notifyNow_(req, service);
+      result = dispatch_(req);
       if (result.ok) cache.put(dupKey, '1', KIOSK_CONFIG.duplicateWindowSeconds);
     }
     if (reqKey) cache.put(reqKey, JSON.stringify(result), SETTINGS.REQUEST_ID_CACHE_SECONDS);
   } catch (err) {
-    console.error('Request failed for ' + req.service + ': ' + err.message);
+    console.error('Request failed (' + req.kind + ' ' + (req.service || req.host || '') + '): ' + err.message);
     result = { ok: false, reason: 'server' };
   } finally {
     lock.releaseLock();
   }
   return result;
-}
-
-/** "now": chat message only – no calendar entry, no slot check. */
-function notifyNow_(req, service) {
-  var sent = sendToChat_(KioskLogic.buildChatMessage(req, service, CHAT_TEXT), service);
-  return sent ? { ok: true } : { ok: false, reason: 'notify_failed' };
 }
 
 /** "later": re-check the slot (we hold the script lock), create the event, notify. */
@@ -181,15 +215,15 @@ function bookLater_(req, service) {
   }, startMin);
   if (!free) return { ok: false, reason: 'taken' };
 
-  var full = { lang: req.lang, type: 'later', name: req.name, persons: req.persons,
-               start: req.start, end: KioskLogic.formatHHMM(startMin + duration) };
+  var full = { kind: 'service', lang: req.lang, service: service.id, type: 'later', name: req.name,
+               persons: req.persons, start: req.start, end: KioskLogic.formatHHMM(startMin + duration) };
   calendar.createEvent(
-    KioskLogic.buildEventTitle(full, CHAT_TEXT),
+    KioskLogic.buildEventTitle(full, service, CHAT_TEXT),
     dateAt_(day.ymd, startMin),
     dateAt_(day.ymd, startMin + duration),
     { description: KioskLogic.buildEventDescription(full, service, CHAT_TEXT) }
   );
-  var notified = sendToChat_(KioskLogic.buildChatMessage(full, service, CHAT_TEXT), service);
+  var notified = notify_(full);
   return { ok: true, start: full.start, end: full.end, notified: notified };
 }
 
@@ -198,7 +232,7 @@ function bookLater_(req, service) {
 function getCalendar_(service) {
   var id = PropertiesService.getScriptProperties().getProperty(service.calendarProperty);
   if (!id) throw new Error('Script property ' + service.calendarProperty + ' is missing');
-  var calendar = CalendarApp.getCalendarById(id);
+  var calendar = CalendarApp.getCalendarById(id.trim());
   if (!calendar) throw new Error('Calendar for ' + service.id + ' not found or no access');
   return calendar;
 }
@@ -241,17 +275,26 @@ function dateAt_(ymd, minutes) {
 
 /* ===== Google Chat ===== */
 
-function webhookUrl_(service) {
-  var props = PropertiesService.getScriptProperties();
-  return (service && service.webhookProperty && props.getProperty(service.webhookProperty)) ||
-    props.getProperty('WEBHOOK_URL');
+/** "<users/all> <users/123…>" for this request (everyone + optional person in charge). */
+function mentionsFor_(req) {
+  var mentions = [CHAT_TEXT.everyone];
+  var property = KioskLogic.mentionPropertyFor(req, KIOSK_CONFIG);
+  if (property) mentions.push(KioskLogic.mentionTag(PropertiesService.getScriptProperties().getProperty(property)));
+  return mentions;
+}
+
+/** Builds the message for a validated request and sends it. */
+function notify_(req) {
+  var body = KioskLogic.buildRequestMessage(req, KIOSK_CONFIG, CHAT_TEXT);
+  return sendToChat_(KioskLogic.withMentions(body, mentionsFor_(req)));
 }
 
 /** Returns true on HTTP 2xx. Logs the status only – never the text. */
-function sendToChat_(text, service) {
-  var url = webhookUrl_(service);
-  if (!url || url.indexOf('https://chat.googleapis.com/') !== 0) {
-    console.error('Webhook URL missing or invalid (WEBHOOK_URL / ' + (service && service.webhookProperty) + ').');
+function sendToChat_(text) {
+  var url = PropertiesService.getScriptProperties().getProperty('WEBHOOK_URL');
+  url = url ? url.trim() : '';
+  if (url.indexOf('https://chat.googleapis.com/') !== 0) {
+    console.error('Script property WEBHOOK_URL is missing or invalid.');
     return false;
   }
   try {
@@ -302,12 +345,10 @@ function sha256Hex_(text) {
 
 /* ===== Manual tests (run from the Apps Script editor) ===== */
 
-/** Sends a test message to the default webhook (also triggers the authorization prompt). */
+/** Sends one test message (also triggers the authorization prompt). Uses @all like real messages. */
 function testWebhook() {
-  var service = KIOSK_CONFIG.services[0];
-  var text = '【テスト】\n' + KioskLogic.buildChatMessage(
-    { lang: 'de', type: 'now', name: 'テスト', persons: 1 }, service, CHAT_TEXT);
-  console.log('testWebhook sent: ' + sendToChat_(text, service));
+  var text = KioskLogic.withMentions('【テスト】キオスクからのテストメッセージです。', [CHAT_TEXT.everyone]);
+  console.log('testWebhook sent: ' + sendToChat_(text));
 }
 
 /** Checks calendar access and prints today's free slots for every service. */
@@ -324,4 +365,34 @@ function testBooking() {
   if (!slots.ok || !slots.slots.length) { console.log('No free slot: ' + JSON.stringify(slots)); return; }
   var result = handleRequest_({ lang: 'en', service: service.id, type: 'later', name: 'Test', persons: 1, start: slots.slots[0].start });
   console.log('testBooking: ' + JSON.stringify(result));
+}
+
+/** Prints which @mention each department / service would get (sends nothing). */
+function testMentions() {
+  var props = PropertiesService.getScriptProperties();
+  var rows = [];
+  KioskLogic.activeCompanies(KIOSK_CONFIG).forEach(function (c) {
+    KioskLogic.activeDepartments(c).forEach(function (d) { rows.push([c.id + '/' + d.id, d.mentionProperty]); });
+  });
+  KioskLogic.activeServices(KIOSK_CONFIG).forEach(function (s) { rows.push([s.id, s.mentionProperty]); });
+  rows.push(['delivery', KIOSK_CONFIG.delivery && KIOSK_CONFIG.delivery.mentionProperty]);
+  rows.forEach(function (r) {
+    var tag = r[1] ? KioskLogic.mentionTag(props.getProperty(r[1])) : '';
+    console.log(r[0] + ': ' + (r[1] || '-') + ' -> ' + (tag || '(only @all)'));
+  });
+}
+
+/** Sends one test visitor message for the first department of the first company. */
+function testVisit() {
+  var host = KioskLogic.activeCompanies(KIOSK_CONFIG)[0];
+  var req = { kind: 'visit', lang: 'ja', host: host.id, department: KioskLogic.activeDepartments(host)[0].id, name: 'テスト', company: '' };
+  var body = '【テスト】\n' + KioskLogic.buildRequestMessage(req, KIOSK_CONFIG, CHAT_TEXT);
+  console.log('testVisit sent: ' + sendToChat_(KioskLogic.withMentions(body, mentionsFor_(req))));
+}
+
+/** Sends a test delivery notice. */
+function testDelivery() {
+  var req = { kind: 'delivery', lang: 'ja', carrier: 'other', company: 'テスト運輸' };
+  var body = '【テスト】\n' + KioskLogic.buildRequestMessage(req, KIOSK_CONFIG, CHAT_TEXT);
+  console.log('testDelivery sent: ' + sendToChat_(KioskLogic.withMentions(body, mentionsFor_(req))));
 }
