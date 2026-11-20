@@ -157,27 +157,91 @@ p { margin: 0; }
 .flag { font-size: 44px; line-height: 1; }
 .lang-name { font-size: 34px; font-weight: 700; }
 
-/* ---------- services ---------- */
+/* ---------- menu tiles: companies / services / delivery ---------- */
 
-.service-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 20px;
-  margin-top: 24px;
-}
-.btn-service {
-  min-height: 150px;
+.menu-header { text-align: center; margin-bottom: 4px; }
+.menu-header h1 { font-size: 40px; margin-bottom: 4px; }
+.menu-header .intro { margin-bottom: 22px; font-size: 22px; }
+
+.menu-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+
+.btn-tile, .btn-choice, .btn-carrier {
   background: var(--surface);
   border-color: var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 24px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .06);
 }
-.btn-service:active { background: #ECE9E1; border-color: var(--primary); }
-.service-icon { font-size: 60px; line-height: 1; }
-.service-name { font-size: 36px; font-weight: 700; }
+.btn-tile:active, .btn-choice:active, .btn-carrier:active:not(:disabled) {
+  background: #ECE9E1;
+  border-color: var(--primary);
+}
+
+.btn-tile {
+  min-height: 188px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px 18px;
+  text-align: center;
+}
+.btn-tile-wide, .btn-tile-wide-even { grid-column: 1 / -1; }
+.btn-tile-wide { min-height: 112px; flex-direction: row; gap: 20px; }
+.tile-logo { display: block; height: 70px; width: auto; max-width: 100%; object-fit: contain; }
+.tile-icon { font-size: 54px; line-height: 1; }
+.tile-title { display: block; font-size: 30px; font-weight: 700; line-height: 1.2; letter-spacing: .02em; }
+.tile-name { display: block; font-size: 21px; font-weight: 600; line-height: 1.3; color: var(--text); }
+.btn-tile-company .tile-name { font-size: 20px; color: var(--muted); }
+.tile-text { display: flex; flex-direction: column; text-align: left; }
+.tile-sub { display: block; font-size: 17px; color: var(--muted); }
+
+/* ---------- choice lists: ZEPHI group, departments ---------- */
+
+.eyebrow { font-size: 18px; font-weight: 700; letter-spacing: .08em; color: var(--primary); margin-bottom: 2px; }
+.company-logo-header { display: block; align-self: flex-start; height: 60px; width: auto; max-width: 70%; object-fit: contain; margin: 0 0 14px; }
+.choice-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-top: 22px; }
+.btn-choice {
+  min-height: 96px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 14px 28px;
+  text-align: left;
+}
+.choice-icon { font-size: 46px; line-height: 1; }
+.choice-text { display: flex; flex-direction: column; }
+.choice-name { font-size: 28px; font-weight: 700; line-height: 1.25; color: var(--primary); }
+.choice-sub { font-size: 18px; color: var(--muted); }
+.btn-choice-other { border-style: dashed; }
+.btn-choice-other .choice-name { color: var(--text); }
+
+/* ---------- visitor check-in form ---------- */
+
+.visit-form { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: 28px; }
+.btn-send { width: 100%; min-height: 96px; margin-top: 4px; }
+
+/* ---------- deliveries ---------- */
+
+.carrier-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.btn-carrier {
+  min-height: 92px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 10px 12px;
+}
+.carrier-label { font-size: 26px; font-weight: 700; line-height: 1.2; }
+.carrier-sub { font-size: 15px; color: var(--muted); }
+.btn-carrier-other { font-size: 22px; font-weight: 700; color: var(--primary); border-style: dashed; border-color: var(--primary); }
+.delivery-other {
+  margin-top: 18px;
+  padding: 20px;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+}
 
 /* ---------- request ---------- */
 
@@ -186,7 +250,7 @@ p { margin: 0; }
 .field { margin-bottom: 20px; }
 .field label, .field .label { display: block; font-weight: 600; margin-bottom: 8px; }
 
-input[type="text"] {
+input[type="text"], input[type="email"], input[type="tel"] {
   width: 100%;
   min-height: var(--touch);
   font: inherit;
@@ -199,8 +263,8 @@ input[type="text"] {
   -webkit-appearance: none;
   appearance: none;
 }
-input[type="text"]::placeholder { color: #7A8383; }
-input[type="text"]:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(31, 95, 91, .25); }
+input::placeholder { color: #7A8383; }
+input[type="text"]:focus, input[type="email"]:focus, input[type="tel"]:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(31, 95, 91, .25); }
 input[aria-invalid="true"] { border-color: var(--error); }
 
 .field-error, .send-error { color: var(--error); font-weight: 600; min-height: 1.45em; margin-top: 6px; }
@@ -309,8 +373,10 @@ input[aria-invalid="true"] { border-color: var(--error); }
 
 @media (orientation: landscape) {
   .lang-grid { grid-template-columns: 1fr 1fr; }
-  .service-grid { grid-template-columns: 1fr 1fr; }
   .home-header { margin-bottom: 28px; }
+  .visit-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .choice-grid { grid-template-columns: 1fr 1fr; }
+  .carrier-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   /* Form on the left, buttons / slots on the right */
   .request-layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 40px; align-items: start; }
   .actions { grid-template-columns: 1fr; }
@@ -324,7 +390,8 @@ input[aria-invalid="true"] { border-color: var(--error); }
   .screen { padding: 16px; }
   .actions { grid-template-columns: 1fr; }
   .actions .btn { min-height: 96px; }
-  .lang-grid, .service-grid { grid-template-columns: 1fr; }
+  .lang-grid { grid-template-columns: 1fr; }
+  .carrier-grid { grid-template-columns: 1fr 1fr; }
   .btn-lang { min-height: 88px; }
   .home-header h1 { font-size: 34px; }
   .home-prompt { grid-template-columns: auto; }
@@ -337,7 +404,10 @@ input[aria-invalid="true"] { border-color: var(--error); }
   .field { margin-bottom: 12px; }
   .actions .btn { min-height: 96px; }
   .btn-lang { min-height: 96px; }
-  .btn-service { min-height: 120px; }
+  .btn-tile { min-height: 150px; }
+  .tile-logo { height: 56px; }
+  .btn-choice { min-height: 84px; }
+  .btn-carrier { min-height: 76px; }
   .btn-slot { min-height: 72px; }
   .home-header { margin-bottom: 20px; }
 }

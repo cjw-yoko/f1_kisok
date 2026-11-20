@@ -54,7 +54,8 @@
     </div>
   </main>
 
-  <!-- 2. Service selection (skipped if only one service is active) -->
+  <!-- 2. Menu: "Welcome" + tiles (companies, service groups / services, delivery).
+          Tiles are built by app.js from config.js. Skipped if only one entry is active. -->
   <main id="screen-services" class="screen" hidden>
     <div class="topbar">
       <button type="button" class="btn btn-back" data-back="home">
@@ -62,8 +63,106 @@
       </button>
     </div>
     <div class="content">
-      <h1 tabindex="-1" data-i18n="servicesTitle"></h1>
-      <div id="service-grid" class="service-grid"></div>
+      <header class="menu-header">
+        <h1 tabindex="-1" data-i18n="welcome"></h1>
+        <p class="intro" data-i18n="servicesTitle"></p>
+      </header>
+      <div id="menu-grid" class="menu-grid"></div>
+    </div>
+  </main>
+
+  <!-- 2a. Service group (e.g. ZEPHI: insoles / foot care) -->
+  <main id="screen-group" class="screen" hidden>
+    <div class="topbar">
+      <button type="button" class="btn btn-back" data-back="services">
+        <span aria-hidden="true">‹</span> <span data-i18n="back"></span>
+      </button>
+    </div>
+    <div class="content">
+      <p class="eyebrow" id="group-title"></p>
+      <h1 tabindex="-1" id="group-name"></h1>
+      <p class="intro" data-i18n="groupIntro"></p>
+      <div id="group-grid" class="choice-grid"></div>
+    </div>
+  </main>
+
+  <!-- 2b. Company (Yoko / WYS Relation): department -->
+  <main id="screen-departments" class="screen" hidden>
+    <div class="topbar">
+      <button type="button" class="btn btn-back" data-back="services">
+        <span aria-hidden="true">‹</span> <span data-i18n="back"></span>
+      </button>
+    </div>
+    <div class="content">
+      <img id="departments-logo" class="company-logo-header" alt="">
+      <p class="eyebrow" id="departments-company"></p>
+      <h1 tabindex="-1" data-i18n="departmentsTitle"></h1>
+      <div id="department-grid" class="choice-grid"></div>
+    </div>
+  </main>
+
+  <!-- 2c. Company: visitor check-in (name, optional company) -->
+  <main id="screen-visit" class="screen" hidden>
+    <div class="topbar">
+      <button type="button" id="btn-visit-back" class="btn btn-back">
+        <span aria-hidden="true">‹</span> <span data-i18n="back"></span>
+      </button>
+    </div>
+    <div class="content content-wide">
+      <p class="eyebrow" id="visit-company-name"></p>
+      <h1 tabindex="-1" id="visit-title"></h1>
+      <p class="intro" data-i18n="visitIntro"></p>
+      <form id="visit-form" class="visit-form" novalidate autocomplete="off">
+        <div class="field">
+          <label for="visit-name" data-i18n="visitName"></label>
+          <input id="visit-name" type="text" data-i18n-placeholder="visitNamePh" enterkeyhint="next"
+                 autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" required
+                 aria-describedby="visit-name-error">
+          <p id="visit-name-error" class="field-error" role="alert"></p>
+        </div>
+        <div class="field">
+          <label for="visit-company" data-i18n="visitCompany"></label>
+          <input id="visit-company" type="text" data-i18n-placeholder="visitCompanyPh" enterkeyhint="done"
+                 autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false"
+                 aria-describedby="visit-company-error">
+          <p id="visit-company-error" class="field-error" role="alert"></p>
+        </div>
+      </form>
+      <button type="button" id="btn-visit-send" class="btn btn-primary btn-send js-submit">
+        <span class="btn-title" data-i18n="visitSend"></span>
+      </button>
+      <p class="status js-status" aria-live="polite"></p>
+      <p class="send-error js-error" role="alert"></p>
+    </div>
+  </main>
+
+  <!-- 2d. Deliveries: which company? -->
+  <main id="screen-delivery" class="screen" hidden>
+    <div class="topbar">
+      <button type="button" class="btn btn-back" data-back="services">
+        <span aria-hidden="true">‹</span> <span data-i18n="back"></span>
+      </button>
+    </div>
+    <div class="content content-wide">
+      <h1 tabindex="-1" data-i18n="deliveryTitle"></h1>
+      <p class="intro" data-i18n="deliveryIntro"></p>
+      <div id="carrier-grid" class="carrier-grid"></div>
+      <div id="delivery-other" class="delivery-other" hidden>
+        <form id="delivery-form" novalidate autocomplete="off">
+          <div class="field">
+            <label for="delivery-company" data-i18n="deliveryOtherLabel"></label>
+            <input id="delivery-company" type="text" data-i18n-placeholder="deliveryOtherPh" enterkeyhint="send"
+                   autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" required
+                   aria-describedby="delivery-company-error">
+            <p id="delivery-company-error" class="field-error" role="alert"></p>
+          </div>
+        </form>
+        <button type="button" id="btn-delivery-send" class="btn btn-primary btn-send js-submit">
+          <span class="btn-title" data-i18n="send"></span>
+        </button>
+      </div>
+      <p class="status js-status" aria-live="polite"></p>
+      <p class="send-error js-error" role="alert"></p>
     </div>
   </main>
 
@@ -75,6 +174,7 @@
       </button>
     </div>
     <div class="content content-wide">
+      <p class="eyebrow" id="request-eyebrow" hidden></p>
       <h1 tabindex="-1" id="request-title"></h1>
       <p class="intro" id="request-intro"></p>
 
@@ -100,11 +200,11 @@
 
         <div class="request-panel">
           <div id="choose-panel" class="actions">
-            <button type="button" id="btn-now" class="btn btn-primary">
+            <button type="button" id="btn-now" class="btn btn-primary js-submit">
               <span class="btn-title" data-i18n="now"></span>
               <span class="btn-hint" data-i18n="nowHint"></span>
             </button>
-            <button type="button" id="btn-later" class="btn btn-secondary">
+            <button type="button" id="btn-later" class="btn btn-secondary js-submit">
               <span class="btn-title" data-i18n="later"></span>
               <span class="btn-hint" data-i18n="laterHint"></span>
             </button>
@@ -122,14 +222,14 @@
             <div id="no-slots" class="notice" hidden>
               <p data-i18n="noSlots"></p>
               <p id="no-slots-now-text" data-i18n="noSlotsNow"></p>
-              <button type="button" id="btn-noslots-now" class="btn btn-primary">
+              <button type="button" id="btn-noslots-now" class="btn btn-primary js-submit">
                 <span class="btn-title" data-i18n="now"></span>
               </button>
             </div>
           </section>
 
-          <p id="request-status" class="status" aria-live="polite"></p>
-          <p id="request-error" class="send-error" role="alert"></p>
+          <p id="request-status" class="status js-status" aria-live="polite"></p>
+          <p id="request-error" class="send-error js-error" role="alert"></p>
         </div>
       </div>
     </div>
@@ -142,7 +242,7 @@
         <circle cx="32" cy="32" r="30"></circle>
         <path d="M19 33l9 9 17-19"></path>
       </svg>
-      <h1 tabindex="-1" data-i18n="confirmTitle"></h1>
+      <h1 tabindex="-1" id="confirm-title"></h1>
       <p id="confirm-text" class="confirm-text" role="status"></p>
       <div id="dryrun-box" class="dryrun-box" hidden>
         <p class="dryrun-label">DRY RUN – Google Chat message (not sent):</p>

@@ -1,6 +1,12 @@
 /*
  * Kiosk UI controller: screens, timers, submit lock, API access.
  * Depends on config.js, i18n.js and logic.js (loaded before this file).
+ *
+ * Screens: home (language) -> services (menu tiles)
+ *   company tile  -> departments -> visit (name, company) -> confirm ("welcome, 3rd floor")
+ *   group tile    -> group (e.g. ZEPHI insoles / foot care) -> request
+ *   service tile  -> request (name, persons, now / slots) -> confirm
+ *   delivery tile -> delivery (carriers / other) -> confirm ("수고하셨습니다!")
  */
 (function () {
   'use strict';
@@ -10,10 +16,14 @@
   var L = KioskLogic;
   var LOCK_KEY = 'kiosk.lockUntil';
   var SLOT_RELOAD_DELAY_MS = 350;
+  var INTERACTIVE_SCREENS = ['services', 'group', 'departments', 'visit', 'delivery', 'request'];
 
   var state = {
     lang: null,
     service: null,
+    group: null,
+    company: null,
+    department: null,
     people: 1,
     mode: 'choose',          // request screen: 'choose' (now/later buttons) or 'slots'
     sending: false,
@@ -31,10 +41,36 @@
     screens: {
       home: $('screen-home'),
       services: $('screen-services'),
+      group: $('screen-group'),
+      departments: $('screen-departments'),
+      visit: $('screen-visit'),
+      delivery: $('screen-delivery'),
       request: $('screen-request'),
       confirm: $('screen-confirm')
     },
-    serviceGrid: $('service-grid'),
+    menuGrid: $('menu-grid'),
+    // group
+    groupTitle: $('group-title'),
+    groupName: $('group-name'),
+    groupGrid: $('group-grid'),
+    // company
+    departmentsLogo: $('departments-logo'),
+    departmentsCompany: $('departments-company'),
+    departmentGrid: $('department-grid'),
+    visitCompanyName: $('visit-company-name'),
+    visitTitle: $('visit-title'),
+    visitBack: $('btn-visit-back'),
+    visitName: $('visit-name'),
+    visitCompany: $('visit-company'),
+    btnVisitSend: $('btn-visit-send'),
+    // delivery
+    carrierGrid: $('carrier-grid'),
+    deliveryOther: $('delivery-other'),
+    deliveryForm: $('delivery-form'),
+    deliveryCompany: $('delivery-company'),
+    btnDeliverySend: $('btn-delivery-send'),
+    // request
+    requestEyebrow: $('request-eyebrow'),
     requestTitle: $('request-title'),
     requestIntro: $('request-intro'),
     requestBack: $('btn-request-back'),
@@ -56,8 +92,8 @@
     noSlots: $('no-slots'),
     noSlotsNowText: $('no-slots-now-text'),
     btnNoSlotsNow: $('btn-noslots-now'),
-    status: $('request-status'),
-    error: $('request-error'),
+    // confirmation
+    confirmTitle: $('confirm-title'),
     confirmText: $('confirm-text'),
     confirmCountdown: $('confirm-countdown'),
     dryRunBox: $('dryrun-box'),
@@ -82,8 +118,10 @@
     for (i = 0; i < nodes.length; i++) nodes[i].setAttribute('aria-label', t(nodes[i].getAttribute('data-i18n-aria')));
   }
 
-  function serviceName(service) {
-    return service.name[state.lang] || service.name.en || service.id;
+  /** Localized text from a {ja, en, ko, de} object (plain strings are returned as is). */
+  function local(obj) {
+    if (typeof obj === 'string') return obj;
+    return (obj && (obj[state.lang] || obj.en || obj.ja)) || '';
   }
 
   function hasType(type) {
@@ -92,6 +130,22 @@
 
   function rangeText(slot) {
     return slot.start + '–' + slot.end;
+  }
+
+  function span(className, text) {
+    var node = document.createElement('span');
+    node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function button(className, children, onClick) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn ' + className;
+    children.forEach(function (c) { if (c) btn.appendChild(c); });
+    btn.addEventListener('click', onClick);
+    return btn;
   }
 
   /* =================== API =================== */
@@ -183,13 +237,13 @@
             body: JSON.stringify(payload)
           });
         },
-        // Same requestId, so the backend answers a retry without booking twice.
+        // Same requestId, so the backend answers a retry without booking or sending twice.
         function () { return jsonp(cfg.appsScriptUrl + '?' + toQuery({ action: 'book', data: JSON.stringify(payload) })); }
       );
     }
   };
 
-  /* ----- dry run: local simulation with sample bookings ----- */
+  /* ----- dry run: local simulation with sample bookings (per calendar, like the backend) ----- */
 
   var dryBusy = {};
 
@@ -200,19 +254,20 @@
     return now.getHours() * 60 + now.getMinutes();
   }
 
-  function dryBusyFor(serviceId) {
-    if (!dryBusy[serviceId]) {
-      dryBusy[serviceId] = ((cfg.dryRunBookings || {})[serviceId] || []).map(function (b) {
+  function dryBusyFor(service) {
+    var key = service.calendarProperty;
+    if (!dryBusy[key]) {
+      dryBusy[key] = ((cfg.dryRunBookings || {})[key] || []).map(function (b) {
         return { start: L.parseHHMM(b.start), end: L.parseHHMM(b.end) };
       });
     }
-    return dryBusy[serviceId];
+    return dryBusy[key];
   }
 
   function dryOptions(service, persons) {
     return {
       blocks: service.openingBlocks,
-      busy: dryBusyFor(service.id),
+      busy: dryBusyFor(service),
       nowMinutes: dryNowMinutes(),
       leadMinutes: cfg.slotLeadMinutes,
       stepMinutes: cfg.slotStepMinutes,
@@ -234,20 +289,22 @@
     },
     request: function (payload) {
       return delay(300).then(function () {
+        var text = cfg.chatTextPreview;
         var check = L.validateRequest(payload, cfg);
         if (!check.ok) return { ok: false, reason: 'invalid', error: check.error };
         var req = check.value;
-        var service = L.findService(cfg, req.service);
-        if (req.type === 'later') {
+        if (req.kind === 'service' && req.type === 'later') {
+          var service = L.findService(cfg, req.service);
           var opts = dryOptions(service, req.persons);
           var start = L.parseHHMM(req.start);
           if (!L.isIntervalFree(opts, start)) return { ok: false, reason: 'taken' };
-          dryBusyFor(service.id).push({ start: start, end: start + opts.durationMinutes });
+          dryBusyFor(service).push({ start: start, end: start + opts.durationMinutes });
           req.end = L.formatHHMM(start + opts.durationMinutes);
+          console.log('[DRY RUN] calendar event (' + service.calendarProperty + '): ' + L.buildEventTitle(req, service, text));
         }
-        var message = L.buildChatMessage(req, service, cfg.chatTextPreview);
+        var prop = L.mentionPropertyFor(req, cfg);
+        var message = L.withMentions(L.buildRequestMessage(req, cfg, text), [text.everyone, prop ? '[@' + prop + ']' : '']);
         console.log('[DRY RUN] payload:', JSON.stringify(payload));
-        if (req.type === 'later') console.log('[DRY RUN] calendar event: ' + L.buildEventTitle(req, cfg.chatTextPreview));
         console.log('[DRY RUN] chat message:\n' + message);
         return { ok: true, start: req.start, end: req.end, preview: message };
       });
@@ -269,6 +326,50 @@
     }
     window.scrollTo(0, 0);
     armInactivity();
+    updateLockUi();
+  }
+
+  function showError(message) {
+    var node = el.screens[state.current] && el.screens[state.current].querySelector('.js-error');
+    if (node) node.textContent = message;
+  }
+
+  function showErrorOn(screen, message) {
+    var node = el.screens[screen].querySelector('.js-error');
+    if (node) node.textContent = message;
+  }
+
+  function blurActive() {
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  }
+
+  /* =================== menu =================== */
+
+  /** Tiles in display order: companies, service groups / services, delivery. */
+  function menuEntries() {
+    var entries = [];
+    L.activeCompanies(cfg).forEach(function (c) { entries.push({ kind: 'company', company: c }); });
+    var seenGroups = {};
+    L.activeServices(cfg).forEach(function (s) {
+      var group = s.group && L.findGroup(cfg, s.group);
+      if (!group) { entries.push({ kind: 'service', service: s }); return; }
+      if (seenGroups[group.id]) return;
+      seenGroups[group.id] = true;
+      entries.push({ kind: 'group', group: group });
+    });
+    if (L.deliveryActive(cfg)) entries.push({ kind: 'delivery' });
+    return entries;
+  }
+
+  function groupServices(group) {
+    return L.activeServices(cfg).filter(function (s) { return s.group === group.id; });
+  }
+
+  function openEntry(entry) {
+    if (entry.kind === 'company') openDepartments(entry.company);
+    else if (entry.kind === 'group') openGroup(entry.group);
+    else if (entry.kind === 'delivery') openDelivery();
+    else selectService(entry.service);
   }
 
   function selectLanguage(lang) {
@@ -276,47 +377,103 @@
     state.lang = lang;
     document.documentElement.lang = lang;
     applyTranslations();
-    var services = L.activeServices(cfg);
-    if (services.length === 1) {
-      selectService(services[0]);
-    } else {
-      renderServices(services);
-      showScreen('services');
-    }
+    var entries = menuEntries();
+    if (entries.length === 1) openEntry(entries[0]);
+    else showMenu();
   }
 
-  function renderServices(services) {
-    el.serviceGrid.innerHTML = '';
-    services.forEach(function (service) {
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'btn btn-service';
-      var icon = document.createElement('span');
-      icon.className = 'service-icon';
-      icon.setAttribute('aria-hidden', 'true');
-      icon.textContent = service.icon;
-      var label = document.createElement('span');
-      label.className = 'service-name';
-      label.textContent = serviceName(service);
-      btn.appendChild(icon);
-      btn.appendChild(label);
-      btn.addEventListener('click', function () { selectService(service); });
-      el.serviceGrid.appendChild(btn);
-    });
+  function showMenu() {
+    if (menuEntries().length <= 1) { resetToHome(); return; }
+    exitSlotsMode();
+    state.service = null;
+    state.group = null;
+    state.company = null;
+    state.department = null;
+    renderMenu();
+    showScreen('services');
   }
+
+  function renderMenu() {
+    el.menuGrid.innerHTML = '';
+    menuEntries().forEach(function (entry) {
+      var tile;
+      if (entry.kind === 'company') {
+        var logo = null;
+        if (entry.company.logo) {
+          logo = document.createElement('img');
+          logo.className = 'tile-logo';
+          logo.src = entry.company.logo;
+          logo.alt = '';   // the name is written below the logo
+        }
+        tile = button('btn-tile btn-tile-company', [logo, span('tile-name', local(entry.company.name))], function () { openEntry(entry); });
+      } else if (entry.kind === 'group') {
+        tile = button('btn-tile', [
+          span('tile-icon', entry.group.icon),
+          entry.group.title ? span('tile-title', entry.group.title) : null,
+          span('tile-name', local(entry.group.name))
+        ], function () { openEntry(entry); });
+      } else if (entry.kind === 'service') {
+        tile = button('btn-tile', [span('tile-icon', entry.service.icon), span('tile-title', local(entry.service.name))], function () { openEntry(entry); });
+      } else {
+        tile = button('btn-tile btn-tile-wide', [
+          span('tile-icon', cfg.delivery.icon || '📦'),
+          (function () {
+            var text = span('tile-text');
+            text.appendChild(span('tile-title', t('deliveryName')));
+            text.appendChild(span('tile-sub', t('deliverySub')));
+            return text;
+          })()
+        ], function () { openEntry(entry); });
+      }
+      var icon = tile.querySelector('.tile-icon');
+      if (icon) icon.setAttribute('aria-hidden', 'true');
+      el.menuGrid.appendChild(tile);
+    });
+    // An odd number of normal tiles: let the last one span the full row.
+    var normal = el.menuGrid.querySelectorAll('.btn-tile:not(.btn-tile-wide)');
+    if (normal.length % 2 === 1) normal[normal.length - 1].classList.add('btn-tile-wide-even');
+  }
+
+  /* =================== service groups (ZEPHI) =================== */
+
+  function openGroup(group) {
+    var services = groupServices(group);
+    if (services.length === 1) { selectService(services[0]); return; }
+    state.group = group;
+    el.groupTitle.textContent = group.title || '';
+    el.groupTitle.hidden = !group.title;
+    el.groupName.textContent = local(group.name);
+    el.groupGrid.innerHTML = '';
+    services.forEach(function (service) {
+      el.groupGrid.appendChild(button('btn-choice', [
+        span('choice-icon', service.icon),
+        (function () {
+          var text = span('choice-text');
+          text.appendChild(span('choice-name', local(service.name)));
+          text.appendChild(span('choice-sub', t('durationHint', L.durationFor(service, 1))));
+          return text;
+        })()
+      ], function () { selectService(service); }));
+    });
+    showScreen('group');
+  }
+
+  /* =================== services (request screen) =================== */
 
   function selectService(service) {
     state.service = service;
     state.people = Math.min(state.people, service.peopleMax);
+    var group = service.group && L.findGroup(cfg, service.group);
+    el.requestEyebrow.textContent = group && group.title ? group.title : '';
+    el.requestEyebrow.hidden = !(group && group.title);
     el.requestTitle.textContent = '';
-    var icon = document.createElement('span');
+    var icon = span('', service.icon + ' ');
     icon.setAttribute('aria-hidden', 'true');
-    icon.textContent = service.icon + ' ';
     el.requestTitle.appendChild(icon);
-    el.requestTitle.appendChild(document.createTextNode(serviceName(service)));
+    el.requestTitle.appendChild(document.createTextNode(local(service.name)));
     el.btnNow.hidden = !hasType('now');
     el.btnLater.hidden = !hasType('later');
-    clearErrors();
+    clearRequestErrors();
     renderPeople();
     showScreen('request');
     // Only "later" allowed: skip the buttons and show the slots right away.
@@ -339,38 +496,163 @@
     el.slotPanel.hidden = true;
     el.slotGrid.innerHTML = '';
     el.requestIntro.textContent = t('requestIntro');
-    el.error.textContent = '';
-    updateLockUi();
+    showErrorOn('request', '');
   }
 
   function goBackFromRequest() {
     if (state.mode === 'slots' && hasType('now')) { exitSlotsMode(); return; }
-    var services = L.activeServices(cfg);
-    if (services.length > 1) {
-      exitSlotsMode();
-      state.service = null;
-      renderServices(services);
-      showScreen('services');
-    } else {
-      resetToHome();
-    }
+    var group = state.service && state.service.group && L.findGroup(cfg, state.service.group);
+    if (group && groupServices(group).length > 1) { exitSlotsMode(); openGroup(group); return; }
+    showMenu();
   }
+
+  /* =================== companies (Yoko / WYS): visitor check-in =================== */
+
+  var VISIT_FIELDS = ['visitName', 'visitCompany'];
+
+  function openDepartments(company) {
+    state.company = company;
+    var departments = L.activeDepartments(company);
+    if (departments.length === 1) { openVisit(departments[0]); return; }
+    el.departmentsLogo.hidden = !company.logo;
+    if (company.logo) el.departmentsLogo.src = company.logo;
+    el.departmentsLogo.alt = local(company.name);
+    el.departmentsCompany.textContent = local(company.name);
+    el.departmentGrid.innerHTML = '';
+    departments.forEach(function (d) {
+      el.departmentGrid.appendChild(button('btn-choice' + (d.other ? ' btn-choice-other' : ''), [
+        span('choice-name', local(d.name))
+      ], function () { openVisit(d); }));
+    });
+    showScreen('departments');
+  }
+
+  function openVisit(department) {
+    state.department = department;
+    el.visitCompanyName.textContent = local(state.company.name);
+    el.visitTitle.textContent = local(department.name);
+    clearVisitErrors();
+    showScreen('visit');
+  }
+
+  function backFromVisit() {
+    if (state.company && L.activeDepartments(state.company).length > 1) showScreen('departments');
+    else showMenu();
+  }
+
+  function setFieldError(input, message) {
+    var node = $(input.id + '-error');
+    if (node) node.textContent = message || '';
+    if (message) input.setAttribute('aria-invalid', 'true'); else input.removeAttribute('aria-invalid');
+  }
+
+  function clearVisitErrors() {
+    VISIT_FIELDS.forEach(function (key) { setFieldError(el[key], ''); });
+    showErrorOn('visit', '');
+  }
+
+  /** Validates name and company, shows every error at once; returns the values or null. */
+  function readVisit() {
+    var name = L.validateName(el.visitName.value, cfg.visitNameMaxLength);
+    var company = L.validateCompany(el.visitCompany.value, cfg.visitCompanyMaxLength, false);
+    var nameMsg = { empty: t('errNameRequired'), too_long: t('errMaxLen', cfg.visitNameMaxLength), invalid_chars: t('errChars') };
+    var companyMsg = { too_long: t('errMaxLen', cfg.visitCompanyMaxLength), invalid_chars: t('errCompanyChars') };
+    setFieldError(el.visitName, name.ok ? '' : nameMsg[name.error]);
+    setFieldError(el.visitCompany, company.ok ? '' : companyMsg[company.error]);
+    if (!name.ok || !company.ok) return null;
+    el.visitName.value = name.value;
+    el.visitCompany.value = company.value;
+    return { name: name.value, company: company.value };
+  }
+
+  function submitVisit() {
+    if (!state.company || !state.department || isBlocked()) return;
+    var data = readVisit();
+    if (!data) return;
+    blurActive();
+    var company = state.company;
+    sendRequest({
+      requestId: newRequestId(),
+      kind: 'visit',
+      lang: state.lang,
+      host: company.id,
+      department: state.department.id,
+      name: data.name,
+      company: data.company
+    }, function () {
+      return { title: t('welcomeTitle'), text: t('confirmVisit', company.floor) };
+    });
+  }
+
+  /* =================== deliveries =================== */
+
+  function openDelivery() {
+    el.carrierGrid.innerHTML = '';
+    (cfg.delivery.carriers || []).forEach(function (carrier) {
+      el.carrierGrid.appendChild(button('btn-carrier js-submit', [
+        span('carrier-label', carrier.label),
+        carrier.sub ? span('carrier-sub', carrier.sub) : null
+      ], function () { submitDelivery(carrier.id); }));
+    });
+    if (cfg.delivery.allowOther) {
+      var other = button('btn-carrier btn-carrier-other', [span('', t('deliveryOther'))], function () {
+        el.deliveryOther.hidden = false;
+        other.setAttribute('aria-expanded', 'true');
+        el.deliveryCompany.focus();
+      });
+      other.setAttribute('aria-expanded', 'false');
+      el.carrierGrid.appendChild(other);
+    }
+    el.deliveryOther.hidden = true;
+    el.deliveryCompany.value = '';
+    setFieldError(el.deliveryCompany, '');
+    showErrorOn('delivery', '');
+    showScreen('delivery');
+  }
+
+  function submitDelivery(carrierId) {
+    if (isBlocked()) return;
+    var payload = { requestId: newRequestId(), kind: 'delivery', lang: state.lang, carrier: carrierId };
+    if (carrierId === 'other') {
+      var company = L.validateCompany(el.deliveryCompany.value, cfg.delivery.companyMaxLength, true);
+      var msg = { empty: t('errCompanyEmpty'), too_long: t('errMaxLen', cfg.delivery.companyMaxLength), invalid_chars: t('errCompanyChars') };
+      setFieldError(el.deliveryCompany, company.ok ? '' : msg[company.error]);
+      if (!company.ok) return;
+      el.deliveryCompany.value = company.value;
+      payload.company = company.value;
+    }
+    blurActive();
+    sendRequest(payload, function () {
+      return { title: cfg.delivery.greeting || t('confirmTitle'), titleLang: cfg.delivery.greetingLang, text: t('confirmDelivery') };
+    });
+  }
+
+  /* =================== reset =================== */
 
   function resetToHome() {
     clearTimeout(timers.confirm);
     clearTimeout(timers.inactivity);
     clearTimeout(timers.slotReload);
-    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    blurActive();
     state.slotsSeq++;
     state.lang = null;
     state.service = null;
+    state.group = null;
+    state.company = null;
+    state.department = null;
     state.people = 1;
     state.mode = 'choose';
     el.name.value = '';
-    el.slotGrid.innerHTML = '';
-    el.serviceGrid.innerHTML = '';
+    VISIT_FIELDS.forEach(function (key) { el[key].value = ''; });
+    el.deliveryCompany.value = '';
+    el.deliveryOther.hidden = true;
+    [el.slotGrid, el.menuGrid, el.groupGrid, el.departmentGrid, el.carrierGrid].forEach(function (g) { g.innerHTML = ''; });
     el.dryRunMessage.textContent = '';
-    clearErrors();
+    clearRequestErrors();
+    clearVisitErrors();
+    setFieldError(el.deliveryCompany, '');
+    var errors = document.querySelectorAll('.js-error');
+    for (var i = 0; i < errors.length; i++) errors[i].textContent = '';
     document.documentElement.lang = 'ja';
     showScreen('home');
     maybeReload();
@@ -380,7 +662,7 @@
 
   function armInactivity() {
     clearTimeout(timers.inactivity);
-    if (state.current === 'services' || state.current === 'request') {
+    if (INTERACTIVE_SCREENS.indexOf(state.current) !== -1) {
       timers.inactivity = setTimeout(resetToHome, cfg.inactivityTimeoutSeconds * 1000);
     }
   }
@@ -413,17 +695,17 @@
     }
   }
 
-  /* =================== errors =================== */
+  /* =================== errors (request screen) =================== */
 
-  function clearErrors() {
+  function clearRequestErrors() {
     el.nameError.textContent = '';
     el.name.removeAttribute('aria-invalid');
-    el.error.textContent = '';
+    showErrorOn('request', '');
   }
 
   var NAME_ERRORS = { empty: 'errEmpty', too_long: 'errTooLong', invalid_chars: 'errChars' };
 
-  /** Validates the name field; shows the error and returns null if invalid. */
+  /** Validates the last-name field; shows the error and returns null if invalid. */
   function readName() {
     var result = L.validateName(el.name.value, cfg.nameMaxLength);
     if (!result.ok) {
@@ -441,6 +723,10 @@
 
   function lockRemaining() {
     return Math.max(0, Math.ceil((state.lockUntil - Date.now()) / 1000));
+  }
+
+  function isBlocked() {
+    return state.sending || lockRemaining() > 0;
   }
 
   function loadLock() {
@@ -463,15 +749,15 @@
     if (lockRemaining() > 0) timers.lockTick = setInterval(updateLockUi, 1000);
   }
 
+  /** All submit buttons (class js-submit) are disabled while sending or locked. */
   function updateLockUi() {
     var remaining = lockRemaining();
     var blocked = remaining > 0 || state.sending;
-    el.btnNow.disabled = blocked;
-    el.btnLater.disabled = blocked;
-    el.btnNoSlotsNow.disabled = blocked;
-    var slotButtons = el.slotGrid.querySelectorAll('button');
-    for (var i = 0; i < slotButtons.length; i++) slotButtons[i].disabled = blocked;
-    el.status.textContent = state.sending ? t('sending') : (remaining > 0 ? t('wait', remaining) : '');
+    var buttons = document.querySelectorAll('.js-submit');
+    for (var i = 0; i < buttons.length; i++) buttons[i].disabled = blocked;
+    var status = state.sending ? t('sending') : (remaining > 0 ? t('wait', remaining) : '');
+    var lines = document.querySelectorAll('.js-status');
+    for (i = 0; i < lines.length; i++) lines[i].textContent = status;
     if (remaining === 0) clearInterval(timers.lockTick);
   }
 
@@ -508,12 +794,8 @@
     el.slotsInfo.textContent = t('slotsIntro', res.duration);
     el.slotGrid.innerHTML = '';
     (res.slots || []).forEach(function (slot) {
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'btn btn-slot';
-      btn.textContent = rangeText(slot);
+      var btn = button('btn-slot js-submit', [document.createTextNode(rangeText(slot))], function () { submitService('later', slot); });
       btn.setAttribute('aria-label', t('slotAria', rangeText(slot)));
-      btn.addEventListener('click', function () { submit('later', slot); });
       el.slotGrid.appendChild(btn);
     });
     var none = !res.slots || res.slots.length === 0;
@@ -526,12 +808,11 @@
 
   /* =================== sending =================== */
 
-  function submit(type, slot) {
-    if (state.sending || lockRemaining() > 0 || !state.service) return;
+  function submitService(type, slot) {
+    if (isBlocked() || !state.service) return;
     var name = readName();
     if (!name) return;
-    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-
+    blurActive();
     var payload = {
       requestId: newRequestId(),
       lang: state.lang,
@@ -541,38 +822,47 @@
       persons: state.people
     };
     if (type === 'later') payload.start = slot.start;
+    sendRequest(payload, function (res) {
+      var text = type !== 'later' ? t('confirmNow') : t('confirmLater', rangeText(res.start && res.end ? res : slot));
+      return { title: t('confirmTitle'), text: text };
+    });
+  }
 
+  /** Sends any request; confirmation(res) returns {title, text, titleLang?} on success. */
+  function sendRequest(payload, confirmation) {
     state.sending = true;
-    el.error.textContent = '';
+    showError('');
     updateLockUi();
 
     api.request(payload).then(function (res) {
       state.sending = false;
       if (res && res.ok) {
         setLock();
-        var booked = res.start && res.end ? { start: res.start, end: res.end } : slot;
-        showConfirmation(type, booked, res.preview);
+        showConfirmation(confirmation(res), res.preview);
       } else if (res && res.reason === 'taken') {
         updateLockUi();
-        el.error.textContent = t('errTaken');
+        showError(t('errTaken'));
         loadSlots();
       } else {
         console.error('Request rejected:', res);
         updateLockUi();
-        el.error.textContent = t('errSend');
+        showError(t('errSend'));
       }
     }, function (err) {
       state.sending = false;
       console.error('Sending failed:', err);
       updateLockUi();
-      el.error.textContent = t('errSend');
+      showError(t('errSend'));
     });
   }
 
   /* =================== confirmation =================== */
 
-  function showConfirmation(type, slot, preview) {
-    el.confirmText.textContent = type === 'later' ? t('confirmLater', rangeText(slot)) : t('confirmNow');
+  function showConfirmation(content, preview) {
+    el.confirmTitle.textContent = content.title;
+    if (content.titleLang) el.confirmTitle.setAttribute('lang', content.titleLang);
+    else el.confirmTitle.removeAttribute('lang');
+    el.confirmText.textContent = content.text;
     el.dryRunBox.hidden = !cfg.dryRun;
     el.dryRunMessage.textContent = preview || '';
     showScreen('confirm');
@@ -599,6 +889,29 @@
 
   /* =================== wiring =================== */
 
+  function onBack(e) {
+    var target = e.currentTarget.getAttribute('data-back');
+    if (target === 'home') resetToHome();
+    else if (target === 'services') showMenu();
+  }
+
+  /** Enter moves to the next field; on the last field it closes the keyboard. */
+  function chainInputs(inputs) {
+    inputs.forEach(function (input, i) {
+      input.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' || e.isComposing) return; // keep IME conversion working
+        e.preventDefault();
+        if (inputs[i + 1]) inputs[i + 1].focus(); else input.blur();
+      });
+      input.addEventListener('input', function () { setFieldError(input, ''); });
+      input.addEventListener('blur', function () {
+        setTimeout(function () {
+          if (!document.activeElement || document.activeElement.tagName !== 'INPUT') window.scrollTo(0, 0);
+        }, 50);
+      });
+    });
+  }
+
   function init() {
     var langButtons = document.querySelectorAll('[data-lang]');
     for (var i = 0; i < langButtons.length; i++) {
@@ -606,10 +919,12 @@
         selectLanguage(e.currentTarget.getAttribute('data-lang'));
       });
     }
-    var homeButtons = document.querySelectorAll('[data-back="home"]');
-    for (i = 0; i < homeButtons.length; i++) homeButtons[i].addEventListener('click', resetToHome);
+    var backButtons = document.querySelectorAll('[data-back]');
+    for (i = 0; i < backButtons.length; i++) backButtons[i].addEventListener('click', onBack);
     el.requestBack.addEventListener('click', goBackFromRequest);
+    el.visitBack.addEventListener('click', backFromVisit);
 
+    // request screen
     el.form.addEventListener('submit', function (e) {
       e.preventDefault();
       el.name.blur(); // "Done"/Enter just closes the keyboard
@@ -624,16 +939,30 @@
     el.peopleLess.addEventListener('click', function () { changePeople(-1); });
     el.peopleMore.addEventListener('click', function () { changePeople(1); });
 
-    el.btnNow.addEventListener('click', function () { submit('now'); });
-    el.btnNoSlotsNow.addEventListener('click', function () { submit('now'); });
+    el.btnNow.addEventListener('click', function () { submitService('now'); });
+    el.btnNoSlotsNow.addEventListener('click', function () { submitService('now'); });
     el.btnLater.addEventListener('click', function () {
-      if (lockRemaining() > 0 || state.sending) return;
+      if (isBlocked()) return;
       if (!readName()) return;
-      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-      el.error.textContent = '';
+      blurActive();
+      showErrorOn('request', '');
       enterSlotsMode();
     });
     el.btnRetry.addEventListener('click', loadSlots);
+
+    // visitor check-in
+    el.visitName.maxLength = cfg.visitNameMaxLength;
+    el.visitCompany.maxLength = cfg.visitCompanyMaxLength;
+    $('visit-form').addEventListener('submit', function (e) { e.preventDefault(); });
+    chainInputs(VISIT_FIELDS.map(function (key) { return el[key]; }));
+    el.btnVisitSend.addEventListener('click', submitVisit);
+
+    // delivery
+    if (cfg.delivery) el.deliveryCompany.maxLength = cfg.delivery.companyMaxLength;
+    el.deliveryForm.addEventListener('submit', function (e) { e.preventDefault(); submitDelivery('other'); });
+    el.deliveryCompany.addEventListener('input', function () { setFieldError(el.deliveryCompany, ''); });
+    el.btnDeliverySend.addEventListener('click', function () { submitDelivery('other'); });
+
     el.btnDone.addEventListener('click', resetToHome);
 
     ['touchstart', 'pointerdown', 'keydown', 'input'].forEach(function (type) {

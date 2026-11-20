@@ -4,8 +4,8 @@
  * This file is used twice:
  *   1. on GitHub Pages by the kiosk page,
  *   2. in the Apps Script project as "Config.gs" (copy the whole file).
- * After changing services, opening blocks or durations, update BOTH places
- * (and create a new Apps Script deployment version).
+ * After changing companies, services, opening blocks or durations, update BOTH
+ * places (and create a new Apps Script deployment version).
  */
 var KIOSK_CONFIG = {
   /* ---------- frontend ---------- */
@@ -38,20 +38,72 @@ var KIOSK_CONFIG = {
   slotStepMinutes: 15,     // first slot of a free interval starts on this grid (rounded up)
   slotLeadMinutes: 15,     // slots start at least this many minutes from now
   maxSlots: 8,             // max. number of slots offered
-  nameMaxLength: 30,
-  duplicateWindowSeconds: 30,  // same name + same service within this window is ignored
+  nameMaxLength: 30,       // last name for service requests
+  duplicateWindowSeconds: 30,  // the same request within this window is ignored
 
-  // Services shown after the language selection. Add more objects to add services.
-  // active: false hides a service (and the backend rejects it).
-  // If only one service is active, the service menu is skipped.
+  /*
+   * Menu after the language selection (tiles in this order):
+   *   companies (top row) -> service groups / services (middle) -> delivery (bottom, wide)
+   *
+   * Every request ends up in ONE Google Chat space (Script Property WEBHOOK_URL).
+   * mentionProperty (optional) = Script Property with "users/<id>" of the person
+   * in charge, who is then @mentioned in addition to @all.
+   */
+
+  // Our companies: visitors usually have an appointment. They choose the
+  // department and enter their name; the team gets a chat message (no calendar).
+  companies: [
+    {
+      id: 'yoko',
+      active: true,
+      name: 'Yoko Co., Ltd.',
+      logo: 'icons/yoko-logo.png',
+      floor: 3,                                  // "please come to the 3rd floor"
+      departments: [
+        { id: 'rd', name: { ja: '研究開発部（R&D）', en: 'R&D Division', ko: '연구개발부 (R&D)', de: 'Forschung & Entwicklung (R&D)' }, mentionProperty: 'MENTION_YOKO_RD' },
+        { id: 'media', name: { ja: 'メディア事業部', en: 'Media Division', ko: '미디어 사업부', de: 'Medien' }, mentionProperty: 'MENTION_YOKO_MEDIA' },
+        { id: 'distribution', name: { ja: '流通事業部', en: 'Distribution Division', ko: '유통 사업부', de: 'Vertrieb (Distribution)' }, mentionProperty: 'MENTION_YOKO_DISTRIBUTION' },
+        { id: 'ec', name: { ja: 'EC事業部', en: 'EC Business Division', ko: 'EC 사업부', de: 'E-Commerce' }, mentionProperty: 'MENTION_YOKO_EC' },
+        { id: 'other', other: true, name: { ja: 'その他', en: 'Other', ko: '기타', de: 'Sonstiges' }, mentionProperty: 'MENTION_YOKO_OTHER' }
+      ]
+    },
+    {
+      id: 'wys',
+      active: true,
+      name: 'WYS Relation Co., Ltd.',
+      logo: 'icons/wys-logo.png',
+      floor: 3,
+      departments: [
+        { id: 'management', name: { ja: 'マネジメント事業部', en: 'Management Business Department', ko: '매니지먼트 사업부', de: 'Management' }, mentionProperty: 'MENTION_WYS_MANAGEMENT' },
+        { id: 'casting', name: { ja: 'キャスティング事業部', en: 'Casting Business Department', ko: '캐스팅 사업부', de: 'Casting' }, mentionProperty: 'MENTION_WYS_CASTING' },
+        { id: 'other', other: true, name: { ja: 'その他', en: 'Other', ko: '기타', de: 'Sonstiges' }, mentionProperty: 'MENTION_WYS_OTHER' }
+      ]
+    }
+  ],
+  visitNameMaxLength: 50,     // full name of a visitor
+  visitCompanyMaxLength: 60,  // visitor's company (optional)
+
+  // Groups combine several services into one tile (e.g. ZEPHI = insoles + foot care).
+  serviceGroups: [
+    {
+      id: 'zephi',
+      icon: '👣',
+      title: 'ZEPHI',
+      name: { ja: 'カスタムインソール / フットケア', en: 'Custom Insoles / Foot Care', ko: '맞춤 인솔 / 풋케어', de: 'Custom Einlegesohlen / Fußpflege' }
+    }
+  ],
+
+  // Bookable services. Services with the same calendarProperty share one calendar
+  // (insoles and foot care: one person is in charge of both).
   services: [
     {
       id: 'insole',
       active: true,
+      group: 'zephi',
       icon: '👟',
-      name: { ja: 'インソール', en: 'Insoles', ko: '인솔', de: 'Einlegesohlen' },
+      name: { ja: 'カスタムインソール', en: 'Custom Insoles', ko: '맞춤 인솔', de: 'Custom Einlegesohlen' },
       calendarProperty: 'CAL_ID_INSOLE',      // Script Property holding the calendar ID
-      webhookProperty: 'WEBHOOK_URL_INSOLE',  // optional, overrides WEBHOOK_URL
+      mentionProperty: 'MENTION_ZEPHI',
       baseMinutes: 45,
       extraMinutesPerPerson: 15,              // duration = base + extra * (persons - 1)
       peopleMax: 5,
@@ -63,12 +115,30 @@ var KIOSK_CONFIG = {
       escortLanguages: ['en', 'de']           // languages that need an interpreter escort
     },
     {
+      id: 'footcare',
+      active: true,
+      group: 'zephi',
+      icon: '🦶',
+      name: { ja: 'フットケア', en: 'Foot Care', ko: '풋케어', de: 'Fußpflege' },
+      calendarProperty: 'CAL_ID_INSOLE',      // same calendar as the insoles
+      mentionProperty: 'MENTION_ZEPHI',
+      baseMinutes: 60,                        // one foot care appointment = 1 hour
+      extraMinutesPerPerson: 60,              // each further person +1 hour (set 0 for a fixed hour)
+      peopleMax: 3,
+      openingBlocks: [
+        { start: '09:00', end: '12:00' },
+        { start: '13:00', end: '18:00' }
+      ],
+      types: ['now', 'later'],
+      escortLanguages: ['en', 'de']
+    },
+    {
       id: 'studio',
       active: true,
       icon: '📸',
       name: { ja: 'フォトスタジオ', en: 'Photo Studio', ko: '포토 스튜디오', de: 'Fotostudio' },
       calendarProperty: 'CAL_ID_STUDIO',
-      webhookProperty: 'WEBHOOK_URL_STUDIO',
+      mentionProperty: 'MENTION_STUDIO',
       baseMinutes: 30,
       extraMinutesPerPerson: 0,
       peopleMax: 5,
@@ -81,18 +151,41 @@ var KIOSK_CONFIG = {
     }
   ],
 
-  // Dry run only: sample bookings per service (busy intervals, HH:MM).
+  // Parcel / delivery services: tap the company on arrival -> chat message only.
+  delivery: {
+    active: true,
+    icon: '📦',
+    greeting: '수고하셨습니다!',   // big greeting on the confirmation screen (all languages)
+    greetingLang: 'ko',
+    mentionProperty: 'MENTION_DELIVERY',
+    allowOther: true,             // "other company" with free text
+    companyMaxLength: 40,
+    carriers: [
+      { id: 'yamato', label: 'ヤマト運輸', sub: 'Yamato Transport' },
+      { id: 'sagawa', label: '佐川急便', sub: 'Sagawa Express' },
+      { id: 'japanpost', label: '日本郵便', sub: 'Japan Post' },
+      { id: 'seino', label: '西濃運輸', sub: 'Seino' },
+      { id: 'fukuyama', label: '福山通運', sub: 'Fukuyama' },
+      { id: 'amazon', label: 'Amazon', sub: '' },
+      { id: 'dhl', label: 'DHL', sub: '' },
+      { id: 'fedex', label: 'FedEx', sub: '' },
+      { id: 'ups', label: 'UPS', sub: '' }
+    ]
+  },
+
+  // Dry run only: sample bookings per calendar (busy intervals, HH:MM).
   dryRunBookings: {
-    insole: [{ start: '10:00', end: '10:45' }, { start: '14:00', end: '15:15' }],
-    studio: [{ start: '09:30', end: '10:00' }, { start: '13:00', end: '14:30' }, { start: '16:00', end: '16:30' }]
+    CAL_ID_INSOLE: [{ start: '10:00', end: '10:45' }, { start: '14:00', end: '15:15' }],
+    CAL_ID_STUDIO: [{ start: '09:30', end: '10:00' }, { start: '13:00', end: '14:30' }, { start: '16:00', end: '16:30' }]
   },
 
   // Chat texts for the DRY-RUN PREVIEW ONLY. The real texts are CHAT_TEXT in
   // apps-script/Code.gs – keep both identical (a test checks this).
   chatTextPreview: {
-    now: '🔔 お客様がいらっしゃいました｜{service}｜{name}様（{persons}名）',
-    later: '🕒 ご予約｜{service}｜{start}–{end}｜{name}様（{persons}名）',
-    serviceLabel: { insole: '👟 インソール', studio: '📸 フォトスタジオ' },
+    everyone: '<users/all>',
+    now: '*🔔 お客様がいらっしゃいました｜{service}*\n{name}様（{persons}名）',
+    later: '*🕒 ご予約が入りました｜{service}｜{start}–{end}*\n{name}様（{persons}名）',
+    serviceLabel: { insole: '👟 ZEPHI インソール', footcare: '🦶 ZEPHI フットケア', studio: '📸 フォトスタジオ' },
     escortNote: {
       en: '🇬🇧 英語の同行が必要です',
       de: '🇩🇪 ドイツ語の同行が必要です',
@@ -103,10 +196,17 @@ var KIOSK_CONFIG = {
       de: '🇩🇪 ドイツ語のお客様',
       ko: '🇰🇷 韓国語のお客様（対応可能）'
     },
-    eventTitle: '{name}様（{persons}名）{langCode}',
+    eventTitle: '{service}｜{name}様（{persons}名）{langCode}',
     eventDescription: '言語: {langName}（{langCode}）\n同行: {escort}',
     escortYes: '必要',
     escortNo: '不要',
-    langName: { ja: '日本語', en: '英語', ko: '韓国語', de: 'ドイツ語' }
+    langName: { ja: '日本語', en: '英語', ko: '韓国語', de: 'ドイツ語' },
+    visit: '*🏢 来客です｜{company}｜{department}*',
+    visitor: '{name}様',
+    visitorWithCompany: '{name}様（{company}）',
+    visitOther: '⚠️ 担当部署が未定です。どなたか対応をお願いします。',
+    visitFooter: '→ {floor}階へご案内しました。担当の方は対応をお願いします。',
+    companyLabel: { yoko: 'YOKO', wys: 'WYS Relation' },
+    delivery: '*📦 配達業者が到着しました｜{company}*\n→ どなたか1階の受付で対応をお願いします。'
   }
 };

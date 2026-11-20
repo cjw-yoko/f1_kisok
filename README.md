@@ -1,156 +1,177 @@
-# Empfangs-Kiosk (iPad) für Einlegesohlen & Fotostudio
+# Empfangs-Kiosk (iPad): Yoko · WYS Relation · ZEPHI · Fotostudio · Paketdienst
 
-Kostenlose Kiosk-Web-App für ein iPad am Eingang (1. Stock). Interessierte wählen Sprache und Dienst, geben ihren Nachnamen und die Personenzahl ein und fragen **jetzt** an oder buchen einen **freien Termin für heute**. Das Team bekommt eine japanische Nachricht in Google Chat. Gebuchte Termine landen im Google-Kalender des jeweiligen Raums.
+Kostenlose Kiosk-Web-App für ein iPad am Eingang (1. Stock). Besucherinnen und Besucher wählen Sprache und Service, das Team bekommt sofort eine **japanische Nachricht in einem gemeinsamen Google-Chat-Space**. Termine für ZEPHI und das Fotostudio landen im Google-Kalender des jeweiligen Raums.
 
 - **Frontend:** statische Dateien auf GitHub Pages (Vanilla JS, kein Build-Schritt)
-- **Backend:** Google Apps Script als Web-App, liest und schreibt die Raumkalender und meldet sich per Webhook in Google Chat
+- **Backend:** Google Apps Script als Web-App (Kalender + Chat-Webhook)
 - **Kosten:** 0 €, kein eigener Server, kein Mac, kein Apple-Developer-Account
 - **Sprachen:** 日本語, English, 한국어, Deutsch
-- **Dienste:** 👟 Einlegesohlen, 📸 Fotostudio (weitere über `config.js`)
 
 ## Ablauf
 
 1. **Sprache** wählen
-2. **Dienst** wählen (wird übersprungen, wenn nur ein Dienst aktiv ist)
-3. **Nachname + Personenzahl**, dann
-   - **„Jetzt anfragen“**: nur Chat-Nachricht, kein Kalendereintrag. Das Team entscheidet vor Ort.
-   - **„Für später anfragen“**: Die freien Zeiten von heute erscheinen (aus dem Kalender berechnet). Wer die Personenzahl ändert, bekommt die Slots neu geladen. Ein Tipp auf eine Zeit bucht sie.
-   - Erlaubt ein Dienst nur „später“, gibt es keinen „Jetzt“-Button, und die Zeiten erscheinen sofort.
-4. **Bestätigung**, nach 10 s zurück zum Start. Nach 45 s Inaktivität geht es ebenfalls zurück zum Start, und alles wird gelöscht.
+2. **„Willkommen – Bitte wählen Sie Ihren gewünschten Service“** mit 5 Kacheln:
+
+   | | |
+   |---|---|
+   | **Yoko Co., Ltd.** (Logo) | **WYS Relation Co., Ltd.** (Logo) |
+   | **ZEPHI** Custom Einlegesohlen / Fußpflege | **Fotostudio** |
+   | **Paketdienst** (breit) | |
+
+3. Je nach Kachel:
+   - **Yoko / WYS Relation** (Besucher haben meist schon einen Termin): Abteilung wählen
+     - Yoko: R&D Division · Media Division · Distribution Division · EC Business Division · Sonstiges
+     - WYS Relation: Management Business Department · Casting Business Department · Sonstiges
+
+     → **Name** (Pflicht) und **Firma** (optional) → „Anmelden“ → **„Herzlich willkommen! Bitte kommen Sie in den 3. Stock.“** Es gibt keinen Kalendereintrag.
+   - **ZEPHI:** **Einlegesohlen** (45 Min. + 15 Min. je weitere Person) oder **Fußpflege** (60 Min. je Person) → Nachname + Personenzahl → **Jetzt anfragen** oder **Für später** (freie Zeiten von heute aus dem Kalender). **Einlegesohlen und Fußpflege teilen sich einen Kalender**, weil dieselbe Person für beides zuständig ist.
+   - **Fotostudio:** wie bisher (Nachname, Personen, jetzt oder später, eigener Kalender).
+   - **Paketdienst:** Zusteller tippt sein Unternehmen an (ヤマト運輸, 佐川急便, 日本郵便, DHL …) oder „Anderes Unternehmen“ → **„수고하셨습니다!“**. Es gibt keinen Kalendereintrag.
+4. Bestätigung, nach 10 s zurück zum Start. Nach 45 s Inaktivität geht es ebenfalls zurück zum Start, und alle Eingaben werden gelöscht.
+
+## Chat-Nachrichten: damit niemand etwas übersieht
+
+**Alles geht in einen Space** (Script Property `WEBHOOK_URL`). Jede Nachricht
+
+1. beginnt mit **`@alle`** (`<users/all>`), damit jedes Mitglied eine Benachrichtigung bekommt,
+2. erwähnt optional zusätzlich die **zuständige Person** (`MENTION_…`, siehe unten),
+3. hat eine **fette Kopfzeile**, aus der sofort hervorgeht, wer zuständig ist (Firma und Abteilung bzw. Dienst).
+
+| Fall | Nachricht im Chat |
+|---|---|
+| Yoko, Besucher | **@alle** @Zuständige<br>**🏢 来客です｜YOKO｜研究開発部（R&D）**<br>山田 太郎様（株式会社サンプル）<br>→ 3階へご案内しました。担当の方は対応をお願いします。 |
+| WYS, „Sonstiges“, Englisch | **@alle**<br>**🏢 来客です｜WYS Relation｜その他**<br>John Smith様<br>🇬🇧 英語のお客様<br>⚠️ 担当部署が未定です。どなたか対応をお願いします。<br>→ 3階へご案内しました。… |
+| ZEPHI jetzt | **@alle** @Zuständige<br>**🔔 お客様がいらっしゃいました｜🦶 ZEPHI フットケア**<br>山田様（1名） |
+| ZEPHI später, Deutsch | **@alle** @Zuständige<br>**🕒 ご予約が入りました｜👟 ZEPHI インソール｜14:00–14:45**<br>Müller様（1名）<br>🇩🇪 ドイツ語の同行が必要です |
+| Fotostudio | wie ZEPHI, mit 📸 フォトスタジオ |
+| Paketdienst | **@alle**<br>**📦 配達業者が到着しました｜ヤマト運輸**<br>→ どなたか1階の受付で対応をお願いします。 |
+
+- Sprachzeile bei Diensten: Englisch und Deutsch → „同行が必要です“ (Begleitung nötig, `escortLanguages`), Koreanisch → „韓国語のお客様（対応可能）“, Japanisch → keine Zeile.
+- **Kalendertermin** („später“): Titel z. B. `🦶 ZEPHI フットケア｜山田様（1名）JA`. So sieht man im gemeinsamen Kalender sofort, ob es um Einlegesohlen oder Fußpflege geht. In der Beschreibung stehen Sprache und Begleitungsbedarf.
+- Alle Texte stehen als Konstante `CHAT_TEXT` oben in `apps-script/Code.gs`. Die Kopie `chatTextPreview` in `config.js` dient nur der Dry-Run-Vorschau. Bei Änderungen beide anpassen (ein Test prüft, dass sie gleich sind).
+- `@alle` ausschalten: in `CHAT_TEXT` `everyone: ''` setzen (und in `chatTextPreview`).
+
+**Wichtig fürs Team:** In der Google-Chat-App (Handy und PC) die Benachrichtigungen für den Space auf **„Alle“** stellen und die Chat-App-Benachrichtigungen auf dem Handy erlauben. In manchen Workspaces kann ein Space-Manager einschränken, wer `@alle` verwenden darf. Dann muss die Einstellung für Apps/Webhooks erlaubt sein.
+
+## Update auf diese Version
+
+Die App läuft bereits. **Erst das Backend, dann GitHub**, sonst zeigt das iPad kurz Kacheln, die das alte Backend noch ablehnt.
+
+1. **Apps Script:** `Code.gs`, `Config.gs` (= neue `config.js`) und `Logic.gs` (= neue `logic.js`) komplett ersetzen → speichern. Die neue `config.js` enthält bereits eure echte `/exec`-URL und `dryRun: false`.
+2. **Script Properties:** `WEBHOOK_URL`, `CAL_ID_INSOLE` und `CAL_ID_STUDIO` bleiben. Optional die `MENTION_…`-Einträge setzen (siehe c) 4.). Nicht mehr verwendet werden `WEBHOOK_URL_INSOLE`, `WEBHOOK_URL_STUDIO`, `WEBHOOK_URL_YOKO`, `WEBHOOK_URL_OEM`/`_EC`/`_PARTNERSHIP` und `WEBHOOK_URL_DELIVERY`. Sie können gelöscht werden.
+3. Im Editor `testWebhook`, `testMentions`, `testVisit` und `testDelivery` ausführen und im Chat prüfen.
+4. **Bereitstellen → Bereitstellungen verwalten → ✏️ → Version: Neue Version → Bereitstellen** (die URL bleibt gleich).
+5. **GitHub:** ersetzen bzw. hochladen: `index.html`, `style.css`, `app.js`, `i18n.js`, `logic.js`, `config.js` und **neu** `icons/wys-logo.png` (`icons/yoko-logo.png` muss ebenfalls vorhanden sein).
+6. iPad: App im App-Umschalter schließen und neu öffnen (oder bis zu 10 Minuten warten).
 
 ## Projektstruktur
 
 ```
-index.html             Eine Seite mit vier Screens (Sprache, Dienst, Anfrage/Slots, Bestätigung)
+index.html             Eine Seite mit allen Screens (Sprache, Menü, ZEPHI, Abteilungen, Anmeldung,
+                       Paketdienst, Name/Slots, Bestätigung)
 style.css              Layout für Hoch- und Querformat
 config.js              ⚙️ Konfiguration – auch als „Config.gs“ im Apps-Script-Projekt!
 logic.js               Slot-Berechnung, Prüfungen, Texte – auch als „Logic.gs“ im Apps-Script-Projekt!
 i18n.js                Alle UI-Texte (ja/en/ko/de)
 app.js                 UI-Steuerung: Screens, Timer, Sendesperre, API-Zugriff, Dry-Run
 manifest.webmanifest   Für „Zum Home-Bildschirm“
-icons/                 App-Icons
+icons/                 App-Icons, yoko-logo.png, wys-logo.png
 apps-script/Code.gs          Backend (Chat-Texte als Konstanten ganz oben)
 apps-script/appsscript.json  Zeitzone Asia/Tokyo, Berechtigungen
-tests/run-tests.js     Tests für Slot-Berechnung, Prüfungen und Backend
+tests/run-tests.js     Tests für Slots, Prüfungen, Nachrichten und Backend
 ```
 
-**Wichtig:** `config.js` und `logic.js` werden **von Frontend und Backend gemeinsam** genutzt. So gibt es Dienste, Öffnungszeiten, Dauern und die Slot-Berechnung nur einmal, und das Backend verlässt sich nie auf Werte aus dem Browser. Wer eine der beiden Dateien ändert, muss sie **auf GitHub und in Apps Script** aktualisieren und in Apps Script eine neue Version bereitstellen.
+**Wichtig:** `config.js` und `logic.js` werden **von Frontend und Backend gemeinsam** genutzt. Firmen, Abteilungen, Dienste, Öffnungszeiten und Dauern gibt es so nur einmal, und das Backend verlässt sich nie auf Werte aus dem Browser. Wer eine der beiden Dateien ändert, muss sie **auf GitHub und in Apps Script** aktualisieren und eine neue Version bereitstellen.
 
 ## Wie die freien Zeiten berechnet werden
 
 - **Dauer** = `baseMinutes + extraMinutesPerPerson × (Personen − 1)`
-  - Einlegesohlen: 45 / 60 / 75 / 90 / 105 Minuten für 1–5 Personen
-  - Fotostudio: immer 30 Minuten (`extraMinutesPerPerson: 0`, änderbar)
-- **Öffnungsblöcke** (beide Räume): 09:00–12:00 und 13:00–18:00. Kein Slot ragt in die Mittagspause oder über 18:00 hinaus.
-- Pro Block: freie Intervalle = Block minus alle Termine im Raumkalender minus die Zeit bis „jetzt + 15 Minuten“.
-- In jedem freien Intervall werden Slots **direkt hintereinander** gelegt. Der erste beginnt auf dem nächsten 15-Minuten-Raster (aufgerundet). Ein Slot muss komplett ins Intervall passen.
-- Höchstens **8 Slots**, nur für **heute**, Zeitzone **Asia/Tokyo**.
-
-Beispiel (Einlegesohlen, 1 Person, 10:20 Uhr, gebucht sind 14:00–15:15):
-`10:45–11:30` · `13:00–13:45` · `15:15–16:00` · `16:00–16:45` · `16:45–17:30`
-(11:30 fehlt, weil der Slot sonst bis 12:15 in die Mittagspause ginge. 13:45 fehlt, weil er sonst in die Buchung um 14:00 ragen würde.)
-
-**Ganztägige Termine** im Raumkalender sperren den ganzen Tag, z. B. „geschlossen“. Jeder andere Termin (auch „Pause“, „Wartung“) blockiert genau seine Zeit.
-
-## So sehen die Nachrichten aus
-
-| Fall | Google-Chat-Nachricht |
-|---|---|
-| Jetzt, Japanisch | 🔔 お客様がいらっしゃいました｜👟 インソール｜山田様（2名） |
-| Jetzt, Deutsch | 🔔 お客様がいらっしゃいました｜📸 フォトスタジオ｜Müller様（1名）<br>🇩🇪 ドイツ語の同行が必要です |
-| Jetzt, Englisch | … + 🇬🇧 英語の同行が必要です |
-| Jetzt, Koreanisch | … + 🇰🇷 韓国語のお客様（対応可能） |
-| Später | 🕒 ご予約｜👟 インソール｜14:00–14:45｜Müller様（1名）<br>+ ggf. Sprachzeile wie oben |
-
-Ob eine Begleitung nötig ist, bestimmt `escortLanguages` des Dienstes (Standard `["en","de"]`). Für andere Sprachen erscheint nur eine Info-Zeile, für Japanisch keine.
-
-**Kalendertermin** bei „Später“: Titel `Müller様（2名）DE`, Beschreibung `言語: ドイツ語（DE）` / `同行: 必要`.
-
-Alle Texte stehen als Konstante `CHAT_TEXT` oben in `apps-script/Code.gs`. Die Kopie `chatTextPreview` in `config.js` dient nur der Dry-Run-Vorschau. Bei Änderungen beide anpassen (ein Test prüft, dass sie gleich sind).
+  - Einlegesohlen: 45 / 60 / 75 / 90 / 105 Min. für 1–5 Personen
+  - Fußpflege: 60 / 120 / 180 Min. für 1–3 Personen (für eine feste Stunde unabhängig von der Personenzahl: `extraMinutesPerPerson: 0`)
+  - Fotostudio: immer 30 Min.
+- **Öffnungsblöcke:** 09:00–12:00 und 13:00–18:00. Kein Slot ragt in die Mittagspause oder über 18:00 hinaus.
+- Freie Intervalle = Block minus **alle Termine im Kalender** minus die Zeit bis „jetzt + 15 Min.“. Einlegesohlen und Fußpflege lesen und schreiben denselben Kalender (`CAL_ID_INSOLE`), blockieren sich also gegenseitig.
+- Slots liegen direkt hintereinander und beginnen auf dem nächsten 15-Minuten-Raster. Es werden höchstens 8 angeboten, nur für heute, Zeitzone Asia/Tokyo.
+- Vor jeder Buchung prüft das Backend unter Sperre erneut. Ist die Zeit inzwischen belegt, heißt es „Dieser Termin wurde gerade vergeben“, und die Liste lädt neu.
+- **Termin löschen = Slot frei:** Termin im Kalender löschen, dann ist die Zeit sofort wieder buchbar. Ein eigener Termin (z. B. „Pause“) oder ein ganztägiger Termin („geschlossen“) blockiert die Zeit.
 
 ---
 
-## Schritt-für-Schritt-Anleitung
+## Einrichtung von Grund auf
 
-### a) Google-Chat-Space und Webhook einrichten
+### a) Google-Chat-Space und Webhook
 
-> Voraussetzung: ein **Google-Workspace-Konto** (Firma/Organisation). Private Gmail-Konten haben in Google Chat keine Webhooks. Fehlt der Menüpunkt, muss der Workspace-Admin Webhooks erlauben.
+> Voraussetzung: ein **Google-Workspace-Konto**. Private Gmail-Konten haben keine Webhooks.
 
-1. In Google Chat einen Space anlegen, z. B. „Empfang 1F“. Das Team hinzufügen und Benachrichtigungen einschalten (Chat-App auf dem Handy).
-2. Oben auf den Space-Namen → **Apps und Integrationen** → **Webhooks** → **Webhook hinzufügen** → Name `Kiosk 1. Stock` → **Speichern**.
-3. Die URL kopieren (`https://chat.googleapis.com/v1/spaces/...`) und **geheim halten**.
-4. Optional: Soll ein Dienst in einen anderen Space posten, dort einen zweiten Webhook anlegen (siehe `WEBHOOK_URL_STUDIO` unten).
+1. In Google Chat einen Space anlegen, z. B. „受付 1F“, und **alle** Mitarbeitenden hinzufügen.
+2. Space-Name → **Apps und Integrationen** → **Webhooks** → **Webhook hinzufügen** → Name `受付キオスク` → **Speichern** → URL kopieren (geheim halten).
+3. Alle stellen die Benachrichtigungen für diesen Space auf **„Alle“**.
 
-### b) Zwei Raumkalender anlegen und freigeben
+### b) Zwei Raumkalender
 
-Mit **demselben Konto**, mit dem du später das Apps Script bereitstellst:
+Mit **demselben Konto**, das später das Apps Script bereitstellt:
 
-1. <https://calendar.google.com> → links bei „Weitere Kalender“ **+** → **Neuen Kalender erstellen**
-   - Name `Raum Einlegesohlen`, Zeitzone **(GMT+09:00) Japan-Zeit** → **Kalender erstellen**
-   - Dasselbe für `Raum Fotostudio`
-2. Für jeden Kalender: Kalender anklicken → **Einstellungen und Freigabe**
-   - **Für bestimmte Personen freigeben** → Teammitglieder hinzufügen mit **„Änderungen an Terminen vornehmen“**, damit das Team Termine sehen, verschieben und löschen kann.
-   - **Nicht** öffentlich freigeben (die Termine enthalten Namen).
-   - Weiter unten unter **Kalender integrieren** die **Kalender-ID** kopieren (sieht aus wie `abc123…@group.calendar.google.com`).
+1. <https://calendar.google.com> → „Weitere Kalender“ **+** → **Neuen Kalender erstellen**: `ZEPHI（インソール・フットケア）` und `フォトスタジオ`, jeweils Zeitzone **Japan**.
+2. Je Kalender: **Einstellungen und Freigabe** → **Für bestimmte Personen freigeben** → Team mit „Änderungen an Terminen vornehmen“ (nicht öffentlich!) → unter **Kalender integrieren** die **Kalender-ID** kopieren.
 
-### c) Apps Script anlegen und als Web-App bereitstellen
+### c) Apps Script
 
-1. <https://script.google.com> → **Neues Projekt**, umbenennen in z. B. „Empfang-Kiosk“.
-2. **Manifest sichtbar machen:** ⚙️ **Projekteinstellungen** → Haken bei **„Manifestdatei ‚appsscript.json‘ im Editor anzeigen“**.
-3. **Dateien anlegen** (Editor `< >`, bei „Dateien“ auf **+ → Skript**):
+1. <https://script.google.com> → **Neues Projekt** („受付キオスク“).
+2. ⚙️ **Projekteinstellungen** → Haken bei **„Manifestdatei ‚appsscript.json‘ im Editor anzeigen“**.
+3. Dateien anlegen bzw. ersetzen:
 
-   | Datei im Apps-Script-Editor | Inhalt kopieren aus |
+   | Datei im Editor | Inhalt aus |
    |---|---|
-   | `Code.gs` (vorhanden, Inhalt ersetzen) | `apps-script/Code.gs` |
-   | `Config.gs` (neu, Name ohne `.gs` eingeben: `Config`) | `config.js` |
+   | `Code.gs` | `apps-script/Code.gs` |
+   | `Config.gs` (neu: **+ → Skript** → `Config`) | `config.js` |
    | `Logic.gs` (neu: `Logic`) | `logic.js` |
-   | `appsscript.json` (Inhalt ersetzen) | `apps-script/appsscript.json` |
+   | `appsscript.json` | `apps-script/appsscript.json` |
 
-   Speichern (💾). Die Reihenfolge der Dateien ist egal.
-4. **Script Properties:** ⚙️ **Projekteinstellungen** → **Skripteigenschaften** → hinzufügen:
+4. **Script Properties** (⚙️ → Skripteigenschaften):
 
    | Eigenschaft | Wert |
    |---|---|
-   | `WEBHOOK_URL` | Webhook-URL aus a) |
-   | `CAL_ID_INSOLE` | Kalender-ID „Raum Einlegesohlen“ |
-   | `CAL_ID_STUDIO` | Kalender-ID „Raum Fotostudio“ |
-   | `WEBHOOK_URL_INSOLE` / `WEBHOOK_URL_STUDIO` | *optional*, überschreibt `WEBHOOK_URL` für diesen Dienst |
+   | `WEBHOOK_URL` | Webhook-URL aus a) – **alle** Nachrichten gehen hierhin |
+   | `CAL_ID_INSOLE` | Kalender-ID ZEPHI (Einlegesohlen **und** Fußpflege) |
+   | `CAL_ID_STUDIO` | Kalender-ID Fotostudio |
+   | *optional* `MENTION_YOKO_RD`, `MENTION_YOKO_MEDIA`, `MENTION_YOKO_DISTRIBUTION`, `MENTION_YOKO_EC`, `MENTION_YOKO_OTHER` | zuständige Person je Yoko-Abteilung |
+   | *optional* `MENTION_WYS_MANAGEMENT`, `MENTION_WYS_CASTING`, `MENTION_WYS_OTHER` | zuständige Person je WYS-Abteilung |
+   | *optional* `MENTION_ZEPHI` | zuständige Person für Einlegesohlen **und** Fußpflege |
+   | *optional* `MENTION_STUDIO`, `MENTION_DELIVERY` | zuständig für Fotostudio bzw. Pakete |
 
-5. **Testen und Berechtigungen bestätigen:** Im Editor oben im Funktions-Dropdown nacheinander ausführen:
-   - `testWebhook`: Beim ersten Mal fragt Google nach Berechtigungen (**Kalender** und **externe Dienste**) → **Berechtigungen überprüfen** → Konto → ggf. „Erweitert“ → „Zu Empfang-Kiosk wechseln (unsicher)“ → **Zulassen**. Das ist normal bei eigenen Skripten. Danach erscheint 【テスト】… im Chat.
-   - `testSlots`: Im **Ausführungsprotokoll** stehen die freien Slots beider Räume. Das bestätigt den Kalenderzugriff.
-   - optional `testBooking`: Bucht den ersten freien Slot mit dem Namen „Test“ (echter Termin + Chat-Nachricht). Danach den Termin im Kalender wieder löschen.
-6. **Bereitstellen:** **Bereitstellen** → **Neue Bereitstellung** → Typ **Web-App**
-   - **Ausführen als: Ich**
-   - **Zugriff: Jeder** (nicht „Jeder mit Google-Konto“)
-   - **Bereitstellen** → falls erneut nach Berechtigungen gefragt wird, wie oben zulassen → **Web-App-URL** (endet auf **`/exec`**) kopieren.
-7. Kontrolle im Browser:
-   - `…/exec` → zeigt „OK“
-   - `…/exec?action=slots&service=insole&persons=1` → JSON mit `"ok":true` und `slots`
+   Wert jeweils `users/<Nutzer-ID>`, z. B. `users/112233445566778899000`. Die numerische ID findet der Workspace-Admin in der Admin-Konsole (admin.google.com → Nutzer → Person öffnen, Zahl in der Adresszeile). Ohne Eintrag oder bei ungültigem Wert gibt es nur `@alle`. Die Person muss Mitglied des Space sein.
+5. **Testen** (Funktion oben im Dropdown wählen → Ausführen; beim ersten Mal Berechtigungen für **Kalender** und **externe Dienste** bestätigen: „Berechtigungen überprüfen“ → Konto → ggf. „Erweitert“ → „… wechseln (unsicher)“ → „Zulassen“):
+   - `testWebhook`: Testnachricht mit @alle
+   - `testMentions`: zeigt im Protokoll, wer je Abteilung bzw. Dienst erwähnt wird (sendet nichts)
+   - `testVisit` / `testDelivery`: Test-Besucher bzw. -Lieferung
+   - `testSlots`: freie Slots aus den Kalendern
+   - `testBooking` (optional): bucht einen echten Testtermin, danach im Kalender löschen
+6. **Bereitstellen → Neue Bereitstellung → Web-App**: Ausführen als **Ich**, Zugriff **Jeder** → `/exec`-URL kopieren.
+   Kontrolle: `…/exec` zeigt „OK“, `…/exec?action=slots&service=footcare&persons=1` zeigt JSON mit `slots`.
 
-**Spätere Änderungen** an einer der Script-Dateien: Speichern allein reicht nicht. **Bereitstellen → Bereitstellungen verwalten → ✏️ → Version: „Neue Version“ → Bereitstellen.** So bleibt die URL gleich.
+**Spätere Änderungen:** Speichern reicht nicht. **Bereitstellungen verwalten → ✏️ → Neue Version → Bereitstellen.**
 
-### d) config.js anpassen
+### d) config.js
 
 ```js
-appsScriptUrl: 'https://script.google.com/macros/s/DEINE_ID/exec',  // aus c)
-dryRun: false,                                                         // Live-Betrieb
+appsScriptUrl: 'https://script.google.com/macros/s/DEINE_ID/exec',
+dryRun: false,
 ```
 
-Weitere Einstellungen (alle kommentiert):
-- **Dienste** (`services`): `active`, `icon`, `name` (4 Sprachen), `calendarProperty`, `webhookProperty`, `baseMinutes`, `extraMinutesPerPerson`, `peopleMax`, `openingBlocks`, `types` (`['now','later']`, nur `['later']` oder nur `['now']`), `escortLanguages`
-- **Neuen Dienst hinzufügen:** ein weiteres Objekt ins Array, einen Kalender anlegen, dessen ID unter dem neuen `calendarProperty` in den Script Properties eintragen, `CHAT_TEXT.serviceLabel` in `Code.gs` ergänzen (sonst wird Icon + japanischer Name verwendet), dann **alle drei Script-Dateien aktualisieren und neu bereitstellen**.
-- `slotStepMinutes` (15), `slotLeadMinutes` (15), `maxSlots` (8), `submitLockSeconds` (30), `inactivityTimeoutSeconds` (45), `duplicateWindowSeconds` (30)
+Anpassbar (alles kommentiert):
+- **`companies`** (Yoko, WYS): `name`, `logo`, `floor` (Etage in der Begrüßung), `departments` mit `id`, `name` (4 Sprachen), `other: true` für „Sonstiges“, `mentionProperty`. Firma oder Abteilung ausblenden: `active: false`.
+- **`serviceGroups`** (ZEPHI): fasst Dienste mit gleichem `group` zu einer Kachel zusammen.
+- **`services`**: `group`, `calendarProperty` (gleicher Wert = gemeinsamer Kalender), `baseMinutes`, `extraMinutesPerPerson`, `peopleMax`, `openingBlocks`, `types` (`now`/`later`), `escortLanguages`, `mentionProperty`.
+- **`delivery`**: `greeting` (`수고하셨습니다!`), `carriers`, `allowOther`, `mentionProperty`.
+- Zeiten: `slotStepMinutes`, `slotLeadMinutes`, `maxSlots`, `submitLockSeconds`, `inactivityTimeoutSeconds`, `duplicateWindowSeconds`.
 
-Nach jeder Änderung: `config.js` auf GitHub **und** als `Config.gs` in Apps Script aktualisieren, dann neue Version bereitstellen.
-
-**Lokal testen (Dry-Run)**, `dryRun: true`:
+**Lokal testen (Dry-Run):** `dryRun: true` setzen (nicht so hochladen!) und
 
 ```bash
 python3 -m http.server 8000
 ```
 
-<http://localhost:8000> öffnen. Die Slots werden lokal mit einer Beispielbelegung (`dryRunBookings`) simuliert, Buchungen belegen die Zeit bis zum Neuladen. Nachricht und Kalendertitel stehen in der Browser-Konsole, die Nachricht zusätzlich auf dem Bestätigungsscreen. Abends gibt es keine Slots mehr. Dafür `dryRunClock: '10:20'` setzen, um eine Uhrzeit zu simulieren.
+<http://localhost:8000> öffnen. Slots werden mit `dryRunBookings` simuliert (pro Kalender, also auch hier gemeinsam für ZEPHI). Die Chat-Nachricht erscheint auf dem Bestätigungsscreen und in der Konsole, die zuständige Person als `[@MENTION_…]`. Abends `dryRunClock: '10:20'` setzen, um eine Uhrzeit zu simulieren.
 
 **Tests:**
 
@@ -158,83 +179,66 @@ python3 -m http.server 8000
 /System/Library/Frameworks/JavaScriptCore.framework/Versions/Current/Helpers/jsc tests/run-tests.js
 ```
 
-### e) GitHub Pages aktivieren
+### e) GitHub Pages
 
-1. Auf <https://github.com> ein **öffentliches** Repository anlegen, z. B. `empfang-kiosk`.
-2. **Add file → Upload files**, alle Projektdateien inkl. der Ordner `icons`, `apps-script`, `tests` hineinziehen → **Commit changes**. Im Repo liegen keine Geheimnisse: Webhook und Kalender-IDs stehen nur in den Script Properties.
-3. **Settings → Pages** → Source **Deploy from a branch** → `main` / `(root)` → **Save**.
-4. Nach 1–2 Minuten: `https://DEIN-NAME.github.io/empfang-kiosk/`
-5. Änderungen kommen nach etwa 1–10 Minuten an (Cache). Auf dem iPad die App neu starten oder auf das automatische Neuladen warten (`reloadAfterHours`).
+Öffentliches Repository → alle Dateien hochladen (inkl. `icons/`) → **Settings → Pages** → `main` / `(root)` → **Save**. Webhook und Kalender-IDs stehen nur in den Script Properties, nicht im Repo.
 
-### f) iPad einrichten (8. Generation, Safari)
+### f) iPad (8. Generation)
 
-1. **Tastaturen:** Einstellungen → Allgemein → Tastatur → Tastaturen → **Japanisch (Kana/Romaji)**, **Koreanisch**, **Deutsch**, **Englisch**. Wechsel über die 🌐-Taste.
-2. **Datum & Uhrzeit:** Einstellungen → Allgemein → Datum & Uhrzeit → **Automatisch**, Zeitzone Tokio.
-3. **Zum Home-Bildschirm:** In Safari die GitHub-Pages-URL öffnen → Teilen (□↑) → **Zum Home-Bildschirm**. Ab jetzt nur noch über das Icon starten (Vollbild, keine Browserleiste).
-4. **Automatische Sperre:** Einstellungen → Anzeige & Helligkeit → **Automatische Sperre → Nie**.
-5. **Mitteilungen aus:** Kontrollzentrum → Fokus → **Nicht stören** dauerhaft an.
-6. **Geführter Zugriff:** Einstellungen → Bedienungshilfen → **Geführter Zugriff** → Ein → Code festlegen, Automatische Sperre **Nie**. Kiosk-App öffnen → **Home-Taste 3× drücken** → **Optionen**:
-   - **Tastaturen: EIN** (sonst kann niemand den Namen eingeben)
-   - Berühren: EIN, Ein/Aus-Taste und Lautstärke: AUS
-   - **Starten**. Beenden: Home-Taste 3× drücken und Code eingeben.
-7. **Dauerladung:** Originalnetzteil dauerhaft anschließen, keine direkte Sonne oder Heizung, Helligkeit etwa 50–70 %, diebstahlsichere Halterung.
+1. Tastaturen: Japanisch (Kana/Romaji), Koreanisch, Englisch, Deutsch.
+2. Datum & Uhrzeit automatisch, Zeitzone Tokio.
+3. Safari → URL → Teilen → **Zum Home-Bildschirm**, nur noch über das Icon starten.
+4. Automatische Sperre: **Nie**. Fokus **Nicht stören** dauerhaft an.
+5. **Geführter Zugriff:** Home-Taste 3× → Optionen: **Tastaturen EIN**, Ein/Aus- und Lautstärketasten AUS → Starten.
+6. Dauerhaft am Netzteil, Helligkeit etwa 50–70 %.
 
-### g) Termin löschen = Slot freigeben
+### g) Testablauf
 
-Im Google-Kalender des Raums auf den Termin tippen → **Löschen** (🗑). Der Kiosk berechnet die Slots bei jedem Aufruf neu aus dem Kalender, also ist die Zeit sofort wieder buchbar. Ebenso kann das Team Zeiten **blockieren**, indem es selbst einen Termin anlegt (z. B. „Pause 15:00–15:30“ oder ganztägig „geschlossen“).
+1. Dry-Run lokal: alle 5 Kacheln, alle Sprachen, Zurück-Buttons, Sperre, Inaktivität.
+2. Live auf dem iPad:
+   - Yoko → jede Abteilung einmal (Nachricht mit @alle bzw. der zuständigen Person)
+   - WYS → „Sonstiges“ (⚠️-Zeile)
+   - ZEPHI → Fußpflege später buchen → Termin im ZEPHI-Kalender → danach zeigen die Einlegesohlen diese Stunde nicht mehr an
+   - Termin löschen → wieder frei
+   - Paketdienst → 수고하셨습니다!
+3. Auf den Handys prüfen, ob alle die Benachrichtigung bekommen haben.
 
-### h) Testablauf und typische Fehler
-
-**Testablauf**
-
-1. Lokal mit `dryRun: true` (und ggf. `dryRunClock`) alles durchklicken: beide Dienste, alle Sprachen, Personenzahl ändern (die Slots ändern sich), Jetzt/Später, leerer Name, Zurück, Sperre, Inaktivität.
-2. In Apps Script `testSlots` ausführen und mit dem Kalender vergleichen.
-3. Live: auf dem iPad je Dienst eine „Später“-Buchung → Termin erscheint im richtigen Raumkalender, Nachricht im Chat.
-4. Den Termin im Kalender löschen → Slot ist auf dem iPad wieder da.
-5. „Vergeben“-Test: Auf dem iPad die Slots anzeigen, dann im Kalender genau zu einer angezeigten Zeit einen Termin anlegen, danach auf dem iPad diese Zeit wählen → „Dieser Termin wurde gerade vergeben“, und die Liste lädt neu.
-
-**Typische Fehler**
+### h) Typische Fehler
 
 | Problem | Ursache / Lösung |
 |---|---|
-| „Die freien Zeiten konnten nicht geladen werden“ | Apps Script → **Ausführungen** öffnen. Häufig: `CAL_ID_…` fehlt oder ist falsch, das bereitstellende Konto hat keinen Zugriff auf den Kalender, Kalenderberechtigung nicht bestätigt (`testSlots` ausführen), oder `Config.gs`/`Logic.gs` fehlen. |
-| „Die Anfrage konnte nicht gesendet werden“ | iPad offline, Platzhalter-URL in `config.js`, Zeitüberschreitung, `WEBHOOK_URL` fehlt (bei „Jetzt“), oder das Backend kennt den Dienst nicht (`Config.gs` veraltet). |
-| Neuer Dienst/neue Zeiten erscheinen, aber Buchung wird abgelehnt | `config.js` auf GitHub geändert, aber nicht `Config.gs` in Apps Script, oder keine neue Version bereitgestellt. |
-| `/exec` zeigt eine Google-Anmeldung | Zugriff nicht auf **Jeder** gestellt, oder der Workspace-Admin erlaubt anonymen Zugriff nicht. |
-| Slots um 9 Stunden verschoben | Zeitzone in `appsscript.json` bzw. `timeZone` in `config.js` ist nicht `Asia/Tokyo`, oder die Uhr des Kalenders bzw. des iPads ist falsch eingestellt. |
-| Keine Slots, obwohl der Kalender leer aussieht | Ganztägiger Termin im Raumkalender? Es ist nach 17:15 (letzter Slot muss vor 18:00 enden)? |
-| Termin im Kalender, aber keine Chat-Nachricht | Die Buchung bleibt bestehen, die Antwort enthält `notified:false`. Webhook-URL prüfen (`testWebhook`). |
-| Änderungen kommen auf dem iPad nicht an | GitHub-Pages-Cache (bis 10 min). App im App-Umschalter schließen und neu öffnen. |
+| Neue Kacheln fehlen oder werden abgelehnt | `Config.gs`/`Logic.gs` in Apps Script noch alt, oder keine neue Version bereitgestellt. |
+| Kachel ohne Text oder mit „undefined“ | `i18n.js` auf GitHub ist nicht die aktuelle Version. |
+| Logo fehlt | `icons/yoko-logo.png` bzw. `icons/wys-logo.png` nicht hochgeladen. |
+| Niemand wird benachrichtigt | Space-Benachrichtigungen auf „Alle“ stellen. Prüfen, ob `@alle` im Space für Apps erlaubt ist. `testWebhook` ausführen. |
+| Zuständige Person wird nicht erwähnt | Wert muss genau `users/<Zahl>` sein, die Person muss im Space sein. Mit `testMentions` prüfen. |
+| Fußpflege und Einlegesohlen überschneiden sich | Beide Dienste müssen `calendarProperty: 'CAL_ID_INSOLE'` haben. |
+| „Die freien Zeiten konnten nicht geladen werden“ | Apps Script → **Ausführungen**: Kalender-ID falsch, kein Zugriff oder Berechtigung nicht bestätigt (`testSlots`). |
+| „Die Anfrage konnte nicht gesendet werden“ | iPad offline oder `WEBHOOK_URL` fehlt bzw. ist falsch. |
+| `/exec` verlangt eine Anmeldung | Zugriff nicht auf **Jeder**, oder der Admin erlaubt anonymen Zugriff nicht. |
+| Änderungen kommen nicht an | GitHub-Pages-Cache (bis 10 Min.), App neu starten. |
 
 ---
 
-## Technik: Antwort des Backends lesen (CORS) und JSONP-Fallback
+## Technik: CORS und JSONP-Fallback
 
-Das Frontend schickt Anfragen als **„einfache“ CORS-Requests**, also ohne Preflight:
-- Slots: `GET …/exec?action=slots&service=insole&persons=2`
-- Anfragen und Buchungen: `POST …/exec` mit `Content-Type: text/plain` und JSON im Body
+Slots per `GET …/exec?action=slots…`, Anfragen per `POST …/exec` mit `Content-Type: text/plain`. Das sind „einfache“ CORS-Requests ohne Preflight. Apps Script leitet auf `script.googleusercontent.com` weiter, das in der Praxis `Access-Control-Allow-Origin: *` sendet, so dass das Frontend die JSON-Antwort lesen kann. Das ist ein verbreitetes Muster, aber von Google nicht ausdrücklich zugesichert.
 
-Apps Script beantwortet `/exec` mit einer Weiterleitung (302) auf `script.googleusercontent.com`. Diese Antwort trägt in der Praxis `Access-Control-Allow-Origin: *`, deshalb kann `fetch` mit `redirect: 'follow'` das JSON normal lesen. Das ist ein weit verbreitetes Muster für Web-Apps mit ContentService, aber von Google nicht ausdrücklich zugesichert. Deshalb gibt es das Fallback.
-
-**Fallback (JSONP):** Kann die Antwort nicht gelesen werden (Netzwerk-/CORS-Fehler, z. B. durch Firmen-Proxy oder Browser-Eigenheiten), wiederholt das Frontend die Anfrage automatisch per JSONP. Es lädt ein `<script>` mit `&callback=…`, und das Backend antwortet mit `callback({...})` (`ContentService.MimeType.JAVASCRIPT`). Buchungen laufen dann als `GET ?action=book&data=<JSON>&callback=…`.
-- Jede Anfrage hat eine **Request-ID**. Das Backend merkt sich die Antwort 10 Minuten (ohne Namen). Kam der erste Versuch doch an, liefert die Wiederholung dieselbe Antwort, also gibt es keine Doppelbuchung.
-- Nach einer Zeitüberschreitung wird **nicht** automatisch wiederholt.
-- Einstellung `transport` in `config.js`: `'auto'` (Standard), `'fetch'` (nur CORS) oder `'jsonp'` (nur JSONP, falls CORS in eurem Netz dauerhaft scheitert).
-- Nachteil von JSONP: Bei Buchungen steht der Name in der URL (Query-Parameter), die Google ggf. technisch protokolliert. Deshalb ist JSONP nur das Fallback.
+**Fallback:** Scheitert das Lesen, wiederholt das Frontend die Anfrage per JSONP (`&callback=…`, Anfragen als `GET ?action=book&data=…`). Jede Anfrage hat eine Request-ID, das Backend merkt sich die Antwort 10 Minuten (ohne Namen). Eine Wiederholung bucht oder sendet also nie doppelt. Nach einer Zeitüberschreitung wird nicht automatisch wiederholt. Einstellung `transport`: `'auto'`, `'fetch'` oder `'jsonp'`. Nachteil von JSONP: Namen stehen in der URL, deshalb ist es nur das Fallback.
 
 ## Sicherheit und Datenschutz
 
-- **Die Apps-Script-URL ist öffentlich sichtbar** (in `config.js`). Mit ihr kann man nur
-  - freie Slots der konfigurierten Dienste abfragen (nur Uhrzeiten, keine Namen),
-  - Nachrichten im festen Format in den Chat-Space schicken und Termine zu freien Zeiten in die Raumkalender eintragen.
+- Die Apps-Script-URL ist öffentlich sichtbar. Mit ihr kann man nur freie Uhrzeiten abfragen sowie Nachrichten im festen Format in den einen Space schicken bzw. Termine zu freien Zeiten eintragen.
+- Alle Eingaben werden im Backend geprüft: bekannte und aktive Firmen, Abteilungen, Dienste und Zusteller, Namen nur aus Buchstaben, Firmennamen ohne `< > * _ ~ @`, Personenzahl, Uhrzeit frei und in den Öffnungszeiten. Ungültiges wird ohne Nachricht und ohne Kalendereintrag verworfen. Erwähnungen kommen nur aus den Script Properties, nie aus Eingaben.
+- Bremsen:
+  - Gleiche Anfrage innerhalb von 30 s wird ignoriert (gleicher Name + Dienst, gleicher Besucher + Abteilung, gleicher Zusteller).
+  - Höchstens 30 Anfragen pro 10 Minuten.
+  - Das iPad sperrt die Buttons 30 s nach dem Senden.
+- **Bei Missbrauch:** alte Bereitstellung archivieren, neue erzeugen, neue `/exec`-URL in `config.js`. Notfalls den Webhook neu anlegen.
+- **Gespeicherte Daten:**
+  - Nur „später“-Buchungen (ZEPHI, Fotostudio) liegen als Termin im Raumkalender: Nachname, Zeit, Personen, Sprache, Begleitung.
+  - Besucher (Name, Firma) und Paketdienste stehen nur in der Chat-Nachricht.
+  - Logs enthalten keine Namen. Die Duplikat-Sperre speichert nur einen Hash für 30 s.
+  - Auf dem iPad liegt nur der Zeitpunkt der Sendesperre.
 
-  Alle Eingaben werden im Backend geprüft: nur bekannte und aktive Dienste, erlaubte Anfrage-Arten, Sprache, Name nur aus Buchstaben (max. 30 Zeichen, keine Erwähnungen oder Formatierungen), 1–5 Personen, Uhrzeit muss frei und in den Öffnungszeiten sein. Ungültiges wird **ohne Webhook-Aufruf und ohne Kalendereintrag** verworfen. Webhook-URL und Kalender-IDs bleiben geheim in den Script Properties.
-- Bremsen: gleicher Name + gleicher Dienst wird 30 s lang ignoriert, insgesamt höchstens 30 Anfragen pro 10 Minuten (`SETTINGS` in `Code.gs`), und das iPad sperrt die Buttons 30 s nach dem Senden.
-- **Bei Missbrauch:** Apps Script → **Bereitstellungen verwalten** → alte Bereitstellung **archivieren**, **neue Bereitstellung** erzeugen und die neue `/exec`-URL in `config.js` eintragen. Die alte URL ist sofort wirkungslos. Falsche Termine im Kalender löschen. Im Notfall den Webhook neu anlegen und `WEBHOOK_URL` aktualisieren.
-- **Gespeicherte Daten:** Nur bei **„Später“-Buchungen** liegen **Nachname, Uhrzeit, Personenzahl, Sprache und Begleitungsbedarf** als Termin im Kalender des jeweiligen Raums (sichtbar für die freigegebenen Teammitglieder). Sonst wird nichts gespeichert:
-  - kein Sheet, keine Logs mit Namen (protokolliert werden nur HTTP-Status und Dienst-ID),
-  - die Duplikat-Sperre hält nur einen SHA-256-Hash für 30 s,
-  - die Request-ID-Antworten enthalten keine Namen,
-  - auf dem iPad liegt nur der Zeitpunkt der Sendesperre im `localStorage`.
-
-  Empfehlung: Alte Termine regelmäßig im Kalender löschen (z. B. monatlich), damit Namen nicht länger als nötig gespeichert bleiben.
+  Empfehlung: alte Termine regelmäßig löschen.
