@@ -35,7 +35,8 @@ var KIOSK_I18N = {
     deliveryOtherLabel: '会社名',
     deliveryOtherPh: '例：サンプル運送',
     send: '送信する',
-    confirmDelivery: 'スタッフに連絡しました。少々お待ちください。',
+    deliveryGreeting: 'お疲れ様です！',
+    confirmDelivery: 'ようこそ。いつも配達ありがとうございます。',
     // services (name, persons, now / later)
     requestIntro: 'お名前（姓）と人数を入力して、ご希望をお選びください。',
     requestIntroLater: 'お名前（姓）と人数を入力して、ご希望の時間をお選びください。',
@@ -57,6 +58,11 @@ var KIOSK_I18N = {
     slotAria: function (r) { return r + 'で予約する'; },
     noSlots: '本日はご予約可能な時間がありません。',
     noSlotsNow: '「今すぐ呼ぶ」をご利用ください。',
+    waitTitle: '待合室でお待ちください',
+    confirmWait: function (w) {
+      return 'ただいま他のお客様が施術中です。' + w.floor + '階の待合室でお掛けになってお待ちください。ご案内予定：' + w.range + '。';
+    },
+    errNowFull: 'ただいま空きがありません。別の時間をご予約ください。',
     confirmTitle: '受付が完了しました',
     confirmNow: 'ありがとうございます。すぐにスタッフが参ります。少々お掛けになってお待ちください。',
     confirmLater: function (r) {
@@ -101,7 +107,8 @@ var KIOSK_I18N = {
     deliveryOtherLabel: 'Company name',
     deliveryOtherPh: 'e.g. Example Logistics',
     send: 'Send',
-    confirmDelivery: 'We have informed our team. Someone will be with you shortly.',
+    deliveryGreeting: 'Thank you for your hard work!',
+    confirmDelivery: 'Welcome, and thank you for the delivery.',
     requestIntro: 'Please enter your last name and the number of people, then choose an option.',
     requestIntroLater: 'Please enter your last name and the number of people, then choose a time.',
     nameLabel: 'Last name',
@@ -122,6 +129,11 @@ var KIOSK_I18N = {
     slotAria: function (r) { return 'Book ' + r; },
     noSlots: 'There are no more free times today.',
     noSlotsNow: 'Please use “Request now”.',
+    waitTitle: 'Please take a seat in the waiting area',
+    confirmWait: function (w) {
+      return 'Another guest is being served right now. Please take a seat in the waiting area on the ' + kioskOrdinal(w.floor) + ' floor (' + w.floor + 'F). Expected time: ' + w.range + '.';
+    },
+    errNowFull: 'Unfortunately there is no free time right now. Please book another time.',
     confirmTitle: 'Request sent',
     confirmNow: 'Thank you. We will be with you shortly. Please take a seat.',
     confirmLater: function (r) {
@@ -165,7 +177,8 @@ var KIOSK_I18N = {
     deliveryOtherLabel: '회사명',
     deliveryOtherPh: '예: 샘플 운송',
     send: '보내기',
-    confirmDelivery: '직원에게 알렸습니다. 잠시만 기다려 주세요.',
+    deliveryGreeting: '수고하셨습니다!',
+    confirmDelivery: '어서 오세요. 늘 배송해 주셔서 감사합니다.',
     requestIntro: '성과 인원을 입력하신 후 원하시는 방법을 선택해 주세요.',
     requestIntroLater: '성과 인원을 입력하신 후 원하시는 시간을 선택해 주세요.',
     nameLabel: '성',
@@ -186,6 +199,11 @@ var KIOSK_I18N = {
     slotAria: function (r) { return r + ' 예약'; },
     noSlots: '오늘은 더 이상 예약 가능한 시간이 없습니다.',
     noSlotsNow: '‘지금 요청하기’를 이용해 주세요.',
+    waitTitle: '대기실에서 기다려 주세요',
+    confirmWait: function (w) {
+      return '지금은 다른 고객님이 이용 중입니다. ' + w.floor + '층 대기실에서 앉아서 기다려 주세요. 예정 시간: ' + w.range + '.';
+    },
+    errNowFull: '지금은 빈 시간이 없습니다. 다른 시간을 예약해 주세요.',
     confirmTitle: '요청이 전달되었습니다',
     confirmNow: '감사합니다. 곧 직원이 찾아뵙겠습니다. 잠시 앉아서 기다려 주세요.',
     confirmLater: function (r) {
@@ -229,7 +247,8 @@ var KIOSK_I18N = {
     deliveryOtherLabel: 'Name des Unternehmens',
     deliveryOtherPh: 'z. B. Spedition Muster',
     send: 'Absenden',
-    confirmDelivery: 'Wir haben das Team informiert. Gleich kommt jemand zu Ihnen.',
+    deliveryGreeting: 'Vielen Dank für Ihre Mühe!',
+    confirmDelivery: 'Herzlich willkommen und vielen Dank für die Lieferung.',
     requestIntro: 'Bitte geben Sie Ihren Nachnamen und die Anzahl der Personen ein und wählen Sie eine Option.',
     requestIntroLater: 'Bitte geben Sie Ihren Nachnamen und die Anzahl der Personen ein und wählen Sie eine Uhrzeit.',
     nameLabel: 'Nachname',
@@ -250,6 +269,11 @@ var KIOSK_I18N = {
     slotAria: function (r) { return r + ' Uhr buchen'; },
     noSlots: 'Heute sind keine Zeiten mehr frei.',
     noSlotsNow: 'Bitte nutzen Sie „Jetzt anfragen“.',
+    waitTitle: 'Bitte im Wartebereich Platz nehmen',
+    confirmWait: function (w) {
+      return 'Gerade ist noch jemand in Behandlung. Bitte nehmen Sie im Wartebereich im ' + w.floor + '. Stock (' + w.floor + 'F) Platz. Voraussichtlich: ' + w.range + ' Uhr.';
+    },
+    errNowFull: 'Leider ist gerade kein Termin frei. Bitte buchen Sie eine andere Uhrzeit.',
     confirmTitle: 'Anfrage gesendet',
     confirmNow: 'Vielen Dank, wir kommen gleich zu Ihnen. Bitte nehmen Sie kurz Platz.',
     confirmLater: function (r) {

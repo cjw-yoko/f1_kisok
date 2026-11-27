@@ -89,6 +89,20 @@ var KioskLogic = (function () {
     return findById(config.delivery && config.delivery.carriers, id);
   }
 
+  /**
+   * false if the language is switched off at this moment (config.languageAvailability),
+   * e.g. German on weekdays 12:30–17:00. date: local time of the kiosk.
+   */
+  function isLanguageAvailable(config, lang, date) {
+    var rules = config.languageAvailability && config.languageAvailability[lang];
+    if (!rules) return true;
+    var day = date.getDay();
+    var minutes = date.getHours() * 60 + date.getMinutes();
+    return !(rules.unavailable || []).some(function (w) {
+      return (!w.days || w.days.indexOf(day) !== -1) && minutes >= parseHHMM(w.start) && minutes < parseHHMM(w.end);
+    });
+  }
+
   function durationFor(service, persons) {
     return service.baseMinutes + (service.extraMinutesPerPerson || 0) * (persons - 1);
   }
@@ -160,6 +174,29 @@ var KioskLogic = (function () {
     });
     if (!inBlock) return false;
     return !(opts.busy || []).some(function (b) { return b.start < end && b.end > startMinutes; });
+  }
+
+  /**
+   * "Request now" for services with nowCheck (ZEPHI). opts: {blocks, busy, nowMinutes, durationMinutes}
+   * - room free now and [now, now+duration) fits (opening block, no booking) -> {mode:'now', start, end}
+   * - someone is being served now and the time right after that appointment
+   *   [end, end+duration) is free                                           -> {mode:'wait', start, end}
+   * - otherwise (next appointment also booked, or not enough time)          -> {mode:'full'}
+   * start/end in minutes.
+   */
+  function decideNow(opts) {
+    var t = opts.nowMinutes;
+    var duration = opts.durationMinutes;
+    var current = (opts.busy || []).filter(function (b) { return b.start <= t && b.end > t; });
+    var start = t;
+    var mode = 'now';
+    if (current.length) {
+      mode = 'wait';
+      start = Math.max.apply(null, current.map(function (b) { return b.end; }));
+    }
+    var check = { blocks: opts.blocks, busy: opts.busy, nowMinutes: t, durationMinutes: duration };
+    if (!isIntervalFree(check, start)) return { mode: 'full' };
+    return { mode: mode, start: start, end: start + duration };
   }
 
   /* ---------- names ---------- */
@@ -280,7 +317,7 @@ var KioskLogic = (function () {
   }
 
   function serviceLabel(service, text) {
-    return (text.serviceLabel && text.serviceLabel[service.id]) || (service.icon + ' ' + service.name.ja);
+    return (text.serviceLabel && text.serviceLabel[service.id]) || service.name.ja;
   }
 
   function needsEscort(service, lang) {
@@ -300,17 +337,28 @@ var KioskLogic = (function () {
     return tags.length ? tags.join(' ') + '\n' + body : body;
   }
 
-  /** Service request. req: {lang, type, name, persons, start?, end?} */
+  /**
+   * Service request. req: {lang, type, name, persons, start?, end?, mode?}
+   * mode (only "now" with calendar check): 'now' = served right away, 'wait' = waiting area.
+   */
   function buildChatMessage(req, service, text) {
-    var head = fill(req.type === 'later' ? text.later : text.now, {
+    var values = {
       service: serviceLabel(service, text),
       name: req.name,
       persons: req.persons,
       start: req.start,
-      end: req.end
-    });
+      end: req.end,
+      floor: service.waitFloor
+    };
+    var template = req.type === 'later' ? text.later : (req.mode === 'wait' && text.wait ? text.wait : text.now);
+    var lines = [fill(template, values)];
     var note = needsEscort(service, req.lang) ? text.escortNote[req.lang] : text.infoNote[req.lang];
-    return note ? head + '\n' + note : head;
+    if (note) lines.push(note);
+    if (req.type !== 'later' && req.start && req.end) {
+      var booked = req.mode === 'wait' ? text.waitBooked : text.nowBooked;
+      if (booked) lines.push(fill(booked, values));
+    }
+    return lines.join('\n');
   }
 
   /** Visitor. req: {lang, host, department, name, company} */
@@ -352,8 +400,11 @@ var KioskLogic = (function () {
     return (s && s.mentionProperty) || null;
   }
 
+  /** Calendar title; {tag} marks same-day "now" / waiting-area entries. */
   function buildEventTitle(req, service, text) {
+    var tagKey = req.type === 'later' ? 'later' : (req.mode || 'now');
     return fill(text.eventTitle, {
+      tag: (text.eventTag && text.eventTag[tagKey]) || '',
       service: serviceLabel(service, text),
       name: req.name,
       persons: req.persons,
@@ -386,10 +437,12 @@ var KioskLogic = (function () {
     findDepartment: findDepartment,
     deliveryActive: deliveryActive,
     findCarrier: findCarrier,
+    isLanguageAvailable: isLanguageAvailable,
     durationFor: durationFor,
     subtractIntervals: subtractIntervals,
     computeFreeSlots: computeFreeSlots,
     isIntervalFree: isIntervalFree,
+    decideNow: decideNow,
     normalizeName: normalizeName,
     validateName: validateName,
     validateCompany: validateCompany,

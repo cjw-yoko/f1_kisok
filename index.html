@@ -12,11 +12,15 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Reception">
   <meta name="format-detection" content="telephone=no">
-  <meta name="theme-color" content="#F6F4EF">
+  <meta name="theme-color" content="#F7F6F3">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/icon-180.png">
   <link rel="icon" type="image/png" href="icons/icon-180.png">
 
+  <!-- Same typefaces as the YOKO website (system fonts are the fallback when offline) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;600&family=Cormorant+Garamond:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Serif+KR:wght@500;600&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -25,6 +29,7 @@
   <!-- 1. Home: language selection (multilingual, each text carries its own lang) -->
   <main id="screen-home" class="screen screen-home">
     <header class="home-header">
+      <p class="kicker kicker-center" lang="en">Reception</p>
       <h1 tabindex="-1" lang="ja">受付</h1>
       <p class="home-sub">
         <span lang="en">Reception</span> ·
@@ -40,16 +45,16 @@
     </header>
     <div class="lang-grid">
       <button type="button" class="btn btn-lang" data-lang="ja" lang="ja">
-        <span class="flag" aria-hidden="true">🇯🇵</span><span class="lang-name">日本語</span>
+        <span class="flag" data-flag="ja" aria-hidden="true"></span><span class="lang-text"><span class="lang-name">日本語</span></span>
       </button>
       <button type="button" class="btn btn-lang" data-lang="en" lang="en">
-        <span class="flag" aria-hidden="true">🇬🇧</span><span class="lang-name">English</span>
+        <span class="flag" data-flag="en" aria-hidden="true"></span><span class="lang-text"><span class="lang-name">English</span></span>
       </button>
       <button type="button" class="btn btn-lang" data-lang="ko" lang="ko">
-        <span class="flag" aria-hidden="true">🇰🇷</span><span class="lang-name">한국어</span>
+        <span class="flag" data-flag="ko" aria-hidden="true"></span><span class="lang-text"><span class="lang-name">한국어</span></span>
       </button>
       <button type="button" class="btn btn-lang" data-lang="de" lang="de">
-        <span class="flag" aria-hidden="true">🇩🇪</span><span class="lang-name">Deutsch</span>
+        <span class="flag" data-flag="de" aria-hidden="true"></span><span class="lang-text"><span class="lang-name">Deutsch</span><span class="lang-note" data-lang-note="de" hidden></span></span>
       </button>
     </div>
   </main>
@@ -59,7 +64,7 @@
   <main id="screen-services" class="screen" hidden>
     <div class="topbar">
       <button type="button" class="btn btn-back" data-back="home">
-        <span aria-hidden="true">‹</span> <span data-i18n="back"></span>
+        <span class="chev" aria-hidden="true"></span><span data-i18n="back"></span>
       </button>
     </div>
     <div class="content">
@@ -75,10 +80,11 @@
   <main id="screen-group" class="screen" hidden>
     <div class="topbar">
       <button type="button" class="btn btn-back" data-back="services">
-        <span aria-hidden="true">‹</span> <span data-i18n="back"></span>
+        <span class="chev" aria-hidden="true"></span><span data-i18n="back"></span>
       </button>
     </div>
     <div class="content">
+      <img id="group-logo" class="company-logo-header" alt="" hidden>
       <p class="eyebrow" id="group-title"></p>
       <h1 tabindex="-1" id="group-name"></h1>
       <p class="intro" data-i18n="groupIntro"></p>
@@ -90,7 +96,7 @@
   <main id="screen-departments" class="screen" hidden>
     <div class="topbar">
       <button type="button" class="btn btn-back" data-back="services">
-        <span aria-hidden="true">‹</span> <span data-i18n="back"></span>
+        <span class="chev" aria-hidden="true"></span><span data-i18n="back"></span>
       </button>
     </div>
     <div class="content">
@@ -105,7 +111,7 @@
   <main id="screen-visit" class="screen" hidden>
     <div class="topbar">
       <button type="button" id="btn-visit-back" class="btn btn-back">
-        <span aria-hidden="true">‹</span> <span data-i18n="back"></span>
+        <span class="chev" aria-hidden="true"></span><span data-i18n="back"></span>
       </button>
     </div>
     <div class="content content-wide">
@@ -140,7 +146,7 @@
   <main id="screen-delivery" class="screen" hidden>
     <div class="topbar">
       <button type="button" class="btn btn-back" data-back="services">
-        <span aria-hidden="true">‹</span> <span data-i18n="back"></span>
+        <span class="chev" aria-hidden="true"></span><span data-i18n="back"></span>
       </button>
     </div>
     <div class="content content-wide">
@@ -170,7 +176,7 @@
   <main id="screen-request" class="screen" hidden>
     <div class="topbar">
       <button type="button" id="btn-request-back" class="btn btn-back">
-        <span aria-hidden="true">‹</span> <span data-i18n="back"></span>
+        <span class="chev" aria-hidden="true"></span><span data-i18n="back"></span>
       </button>
     </div>
     <div class="content content-wide">
@@ -254,6 +260,7 @@
   </main>
 
   <script src="config.js"></script>
+  <script src="icons.js"></script>
   <script src="i18n.js"></script>
   <script src="logic.js"></script>
   <script src="app.js"></script>

@@ -26,11 +26,21 @@ var KIOSK_CONFIG = {
   // 'fetch' = CORS fetch only, 'jsonp' = JSONP only (see README)
   transport: 'auto',
 
-  submitLockSeconds: 30,         // submit buttons stay locked after a successful request
+  submitLockSeconds: 10,         // submit buttons stay locked after a successful request
   inactivityTimeoutSeconds: 45,  // back to the home screen after inactivity
   confirmationSeconds: 10,       // confirmation screen duration
   requestTimeoutSeconds: 15,     // network timeout
   reloadAfterHours: 12,          // reload while idle to pick up new versions (0 = off)
+
+  // Languages that are not offered at certain times (iPad clock). The button is greyed out.
+  // days: 0 = Sunday ... 6 = Saturday. German: the only German speaker is not available
+  // on weekdays from 12:30 to 17:00.
+  languageAvailability: {
+    de: {
+      unavailable: [{ days: [1, 2, 3, 4, 5], start: '12:30', end: '17:00' }],
+      note: 'Zurzeit nicht verfügbar · bitte English wählen'
+    }
+  },
 
   /* ---------- shared (frontend + backend) ---------- */
 
@@ -87,7 +97,7 @@ var KIOSK_CONFIG = {
   serviceGroups: [
     {
       id: 'zephi',
-      icon: '👣',
+      logo: 'icons/zephi-logo.png',           // wordmark from the ZEPHI logo proposal (PDF)
       title: 'ZEPHI',
       name: { ja: 'カスタムインソール / フットケア', en: 'Custom Insoles / Foot Care', ko: '맞춤 인솔 / 풋케어', de: 'Custom Einlegesohlen / Fußpflege' }
     }
@@ -100,7 +110,7 @@ var KIOSK_CONFIG = {
       id: 'insole',
       active: true,
       group: 'zephi',
-      icon: '👟',
+      icon: 'insole',                         // key in icons.js (an emoji also works)
       name: { ja: 'カスタムインソール', en: 'Custom Insoles', ko: '맞춤 인솔', de: 'Custom Einlegesohlen' },
       calendarProperty: 'CAL_ID_INSOLE',      // Script Property holding the calendar ID
       mentionProperty: 'MENTION_ZEPHI',
@@ -112,13 +122,18 @@ var KIOSK_CONFIG = {
         { start: '13:00', end: '18:00' }
       ],
       types: ['now', 'later'],                // allowed request types
-      escortLanguages: ['en', 'de']           // languages that need an interpreter escort
+      escortLanguages: ['en', 'de'],          // languages that need an interpreter escort
+      // "Request now" checks the calendar: free -> served right away; someone is being
+      // served and the next slot is free -> waiting area on waitFloor; otherwise -> book
+      // another time. The time is entered in the calendar.
+      nowCheck: true,
+      waitFloor: 2
     },
     {
       id: 'footcare',
       active: true,
       group: 'zephi',
-      icon: '🦶',
+      icon: 'footcare',
       name: { ja: 'フットケア', en: 'Foot Care', ko: '풋케어', de: 'Fußpflege' },
       calendarProperty: 'CAL_ID_INSOLE',      // same calendar as the insoles
       mentionProperty: 'MENTION_ZEPHI',
@@ -130,12 +145,15 @@ var KIOSK_CONFIG = {
         { start: '13:00', end: '18:00' }
       ],
       types: ['now', 'later'],
-      escortLanguages: ['en', 'de']
+      escortLanguages: ['en', 'de'],
+      nowCheck: true,
+      waitFloor: 2
     },
     {
       id: 'studio',
       active: true,
-      icon: '📸',
+      icon: 'studio',
+      wordmark: 'PHOTO STUDIO',               // shown next to the logo on the menu tile
       name: { ja: 'フォトスタジオ', en: 'Photo Studio', ko: '포토 스튜디오', de: 'Fotostudio' },
       calendarProperty: 'CAL_ID_STUDIO',
       mentionProperty: 'MENTION_STUDIO',
@@ -151,12 +169,11 @@ var KIOSK_CONFIG = {
     }
   ],
 
-  // Parcel / delivery services: tap the company on arrival -> chat message only.
+  // Parcel / delivery services: tap the company on arrival -> greeting on the screen
+  // (deliveryGreeting in i18n.js) and an information message in the chat. Nobody comes down.
   delivery: {
     active: true,
-    icon: '📦',
-    greeting: '수고하셨습니다!',   // big greeting on the confirmation screen (all languages)
-    greetingLang: 'ko',
+    icon: 'parcel',
     mentionProperty: 'MENTION_DELIVERY',
     allowOther: true,             // "other company" with free text
     companyMaxLength: 40,
@@ -185,6 +202,9 @@ var KIOSK_CONFIG = {
     everyone: '<users/all>',
     now: '*🔔 お客様がいらっしゃいました｜{service}*\n{name}様（{persons}名）',
     later: '*🕒 ご予約が入りました｜{service}｜{start}–{end}*\n{name}様（{persons}名）',
+    nowBooked: '🗓 {start}–{end} でカレンダーに登録しました',
+    wait: '*⏳ 待合室でお待ちいただいています｜{service}*\n{name}様（{persons}名）',
+    waitBooked: '→ {floor}階の待合室にご案内しました。次の枠 {start}–{end} をカレンダーに登録済みです。',
     serviceLabel: { insole: '👟 ZEPHI インソール', footcare: '🦶 ZEPHI フットケア', studio: '📸 フォトスタジオ' },
     escortNote: {
       en: '🇬🇧 英語の同行が必要です',
@@ -196,7 +216,8 @@ var KIOSK_CONFIG = {
       de: '🇩🇪 ドイツ語のお客様',
       ko: '🇰🇷 韓国語のお客様（対応可能）'
     },
-    eventTitle: '{service}｜{name}様（{persons}名）{langCode}',
+    eventTitle: '{tag}{service}｜{name}様（{persons}名）{langCode}',
+    eventTag: { later: '', now: '【当日】', wait: '【待合室】' },
     eventDescription: '言語: {langName}（{langCode}）\n同行: {escort}',
     escortYes: '必要',
     escortNo: '不要',
@@ -207,6 +228,6 @@ var KIOSK_CONFIG = {
     visitOther: '⚠️ 担当部署が未定です。どなたか対応をお願いします。',
     visitFooter: '→ {floor}階へご案内しました。担当の方は対応をお願いします。',
     companyLabel: { yoko: 'YOKO', wys: 'WYS Relation' },
-    delivery: '*📦 配達業者が到着しました｜{company}*\n→ どなたか1階の受付で対応をお願いします。'
+    delivery: '*📦 配達業者が到着しました｜{company}*'
   }
 };

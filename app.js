@@ -50,6 +50,7 @@
     },
     menuGrid: $('menu-grid'),
     // group
+    groupLogo: $('group-logo'),
     groupTitle: $('group-title'),
     groupName: $('group-name'),
     groupGrid: $('group-grid'),
@@ -137,6 +138,23 @@
     node.className = className;
     if (text !== undefined) node.textContent = text;
     return node;
+  }
+
+  /** SVG icon from icons.js by key; an unknown key (e.g. an emoji) is shown as text. */
+  function iconNode(key, className) {
+    var node = span(className);
+    node.setAttribute('aria-hidden', 'true');
+    if (typeof KIOSK_ICONS !== 'undefined' && KIOSK_ICONS[key]) node.innerHTML = KIOSK_ICONS[key];
+    else node.textContent = key || '';
+    return node;
+  }
+
+  function logoNode(src, className) {
+    var img = document.createElement('img');
+    img.className = className;
+    img.src = src;
+    img.alt = '';   // the name is written next to the logo
+    return img;
   }
 
   function button(className, children, onClick) {
@@ -302,11 +320,26 @@
           req.end = L.formatHHMM(start + opts.durationMinutes);
           console.log('[DRY RUN] calendar event (' + service.calendarProperty + '): ' + L.buildEventTitle(req, service, text));
         }
+        if (req.kind === 'service' && req.type === 'now' && L.findService(cfg, req.service).nowCheck) {
+          var nowService = L.findService(cfg, req.service);
+          var decision = L.decideNow({
+            blocks: nowService.openingBlocks,
+            busy: dryBusyFor(nowService),
+            nowMinutes: dryNowMinutes(),
+            durationMinutes: L.durationFor(nowService, req.persons)
+          });
+          if (decision.mode === 'full') return { ok: false, reason: 'full' };
+          dryBusyFor(nowService).push({ start: decision.start, end: decision.end });
+          req.mode = decision.mode;
+          req.start = L.formatHHMM(decision.start);
+          req.end = L.formatHHMM(decision.end);
+          console.log('[DRY RUN] calendar event (' + nowService.calendarProperty + '): ' + L.buildEventTitle(req, nowService, text));
+        }
         var prop = L.mentionPropertyFor(req, cfg);
         var message = L.withMentions(L.buildRequestMessage(req, cfg, text), [text.everyone, prop ? '[@' + prop + ']' : '']);
         console.log('[DRY RUN] payload:', JSON.stringify(payload));
         console.log('[DRY RUN] chat message:\n' + message);
-        return { ok: true, start: req.start, end: req.end, preview: message };
+        return { ok: true, mode: req.mode, start: req.start, end: req.end, preview: message };
       });
     }
   };
@@ -373,7 +406,7 @@
   }
 
   function selectLanguage(lang) {
-    if (!I18N[lang]) return;
+    if (!I18N[lang] || !L.isLanguageAvailable(cfg, lang, kioskNow())) return;
     state.lang = lang;
     document.documentElement.lang = lang;
     applyTranslations();
@@ -398,25 +431,34 @@
     menuEntries().forEach(function (entry) {
       var tile;
       if (entry.kind === 'company') {
-        var logo = null;
-        if (entry.company.logo) {
-          logo = document.createElement('img');
-          logo.className = 'tile-logo';
-          logo.src = entry.company.logo;
-          logo.alt = '';   // the name is written below the logo
-        }
-        tile = button('btn-tile btn-tile-company', [logo, span('tile-name', local(entry.company.name))], function () { openEntry(entry); });
-      } else if (entry.kind === 'group') {
-        tile = button('btn-tile', [
-          span('tile-icon', entry.group.icon),
-          entry.group.title ? span('tile-title', entry.group.title) : null,
-          span('tile-name', local(entry.group.name))
+        tile = button('btn-tile btn-tile-company', [
+          entry.company.logo ? logoNode(entry.company.logo, 'tile-logo') : null,
+          span('tile-name', local(entry.company.name))
         ], function () { openEntry(entry); });
+      } else if (entry.kind === 'group') {
+        var g = entry.group;
+        tile = button('btn-tile btn-tile-brand', [
+          g.logo ? logoNode(g.logo, 'tile-logo tile-logo-brand') : iconNode(g.icon || '', 'tile-icon'),
+          !g.logo && g.title ? span('tile-title', g.title) : null,
+          span('tile-name', local(g.name))
+        ], function () { openEntry(entry); });
+        tile.setAttribute('aria-label', (g.title ? g.title + ' ' : '') + local(g.name));
       } else if (entry.kind === 'service') {
-        tile = button('btn-tile', [span('tile-icon', entry.service.icon), span('tile-title', local(entry.service.name))], function () { openEntry(entry); });
+        var sv = entry.service;
+        tile = button('btn-tile btn-tile-brand', [
+          sv.wordmark
+            ? (function () {
+                var mark = span('tile-mark');
+                mark.appendChild(iconNode(sv.icon, 'tile-icon'));
+                mark.appendChild(span('tile-wordmark', sv.wordmark));
+                return mark;
+              })()
+            : iconNode(sv.icon, 'tile-icon'),
+          span(sv.wordmark ? 'tile-name' : 'tile-title', local(sv.name))
+        ], function () { openEntry(entry); });
       } else {
         tile = button('btn-tile btn-tile-wide', [
-          span('tile-icon', cfg.delivery.icon || '📦'),
+          iconNode(cfg.delivery.icon || 'parcel', 'tile-icon'),
           (function () {
             var text = span('tile-text');
             text.appendChild(span('tile-title', t('deliveryName')));
@@ -440,13 +482,15 @@
     var services = groupServices(group);
     if (services.length === 1) { selectService(services[0]); return; }
     state.group = group;
+    el.groupLogo.hidden = !group.logo;
+    if (group.logo) { el.groupLogo.src = group.logo; el.groupLogo.alt = group.title || ''; }
     el.groupTitle.textContent = group.title || '';
-    el.groupTitle.hidden = !group.title;
+    el.groupTitle.hidden = !group.title || !!group.logo;
     el.groupName.textContent = local(group.name);
     el.groupGrid.innerHTML = '';
     services.forEach(function (service) {
       el.groupGrid.appendChild(button('btn-choice', [
-        span('choice-icon', service.icon),
+        iconNode(service.icon, 'choice-icon'),
         (function () {
           var text = span('choice-text');
           text.appendChild(span('choice-name', local(service.name)));
@@ -462,14 +506,13 @@
 
   function selectService(service) {
     state.service = service;
+    state.nowFull = false;
     state.people = Math.min(state.people, service.peopleMax);
     var group = service.group && L.findGroup(cfg, service.group);
     el.requestEyebrow.textContent = group && group.title ? group.title : '';
     el.requestEyebrow.hidden = !(group && group.title);
     el.requestTitle.textContent = '';
-    var icon = span('', service.icon + ' ');
-    icon.setAttribute('aria-hidden', 'true');
-    el.requestTitle.appendChild(icon);
+    el.requestTitle.appendChild(iconNode(service.icon, 'title-icon'));
     el.requestTitle.appendChild(document.createTextNode(local(service.name)));
     el.btnNow.hidden = !hasType('now');
     el.btnLater.hidden = !hasType('later');
@@ -519,8 +562,11 @@
     el.departmentsLogo.alt = local(company.name);
     el.departmentsCompany.textContent = local(company.name);
     el.departmentGrid.innerHTML = '';
-    departments.forEach(function (d) {
+    departments.forEach(function (d, i) {
+      var num = span('choice-num', (i < 9 ? '0' : '') + (i + 1));
+      num.setAttribute('aria-hidden', 'true');
       el.departmentGrid.appendChild(button('btn-choice' + (d.other ? ' btn-choice-other' : ''), [
+        num,
         span('choice-name', local(d.name))
       ], function () { openVisit(d); }));
     });
@@ -623,8 +669,34 @@
     }
     blurActive();
     sendRequest(payload, function () {
-      return { title: cfg.delivery.greeting || t('confirmTitle'), titleLang: cfg.delivery.greetingLang, text: t('confirmDelivery') };
+      return { title: t('deliveryGreeting'), text: t('confirmDelivery') };
     });
+  }
+
+  /* =================== language availability (e.g. German not on weekdays 12:30–17:00) =================== */
+
+  /** Kiosk clock; in dry-run mode dryRunClock can simulate the time of day. */
+  function kioskNow() {
+    var now = new Date();
+    var simulated = cfg.dryRun ? L.parseHHMM(cfg.dryRunClock) : NaN;
+    if (!isNaN(simulated)) now.setHours(Math.floor(simulated / 60), simulated % 60, 0, 0);
+    return now;
+  }
+
+  function updateLanguageAvailability() {
+    var now = kioskNow();
+    var buttons = document.querySelectorAll('[data-lang]');
+    for (var i = 0; i < buttons.length; i++) {
+      var lang = buttons[i].getAttribute('data-lang');
+      var available = L.isLanguageAvailable(cfg, lang, now);
+      buttons[i].disabled = !available;
+      var note = document.querySelector('[data-lang-note="' + lang + '"]');
+      if (note) {
+        var rules = cfg.languageAvailability && cfg.languageAvailability[lang];
+        note.textContent = rules && rules.note ? rules.note : '';
+        note.hidden = available || !note.textContent;
+      }
+    }
   }
 
   /* =================== reset =================== */
@@ -654,6 +726,7 @@
     var errors = document.querySelectorAll('.js-error');
     for (var i = 0; i < errors.length; i++) errors[i].textContent = '';
     document.documentElement.lang = 'ja';
+    updateLanguageAvailability();
     showScreen('home');
     maybeReload();
   }
@@ -801,8 +874,10 @@
     var none = !res.slots || res.slots.length === 0;
     el.slotGrid.hidden = none;
     el.noSlots.hidden = !none;
-    el.noSlotsNowText.hidden = !hasType('now');
-    el.btnNoSlotsNow.hidden = !hasType('now');
+    // Do not offer "now" again if it was just refused.
+    var offerNow = hasType('now') && !state.nowFull;
+    el.noSlotsNowText.hidden = !offerNow;
+    el.btnNoSlotsNow.hidden = !offerNow;
     updateLockUi();
   }
 
@@ -822,9 +897,13 @@
       persons: state.people
     };
     if (type === 'later') payload.start = slot.start;
+    var service = state.service;
     sendRequest(payload, function (res) {
-      var text = type !== 'later' ? t('confirmNow') : t('confirmLater', rangeText(res.start && res.end ? res : slot));
-      return { title: t('confirmTitle'), text: text };
+      if (type === 'later') return { title: t('confirmTitle'), text: t('confirmLater', rangeText(res.start && res.end ? res : slot)) };
+      if (res.mode === 'wait') {
+        return { title: t('waitTitle'), text: t('confirmWait', { floor: service.waitFloor || 2, range: rangeText(res) }) };
+      }
+      return { title: t('confirmTitle'), text: t('confirmNow') };
     });
   }
 
@@ -843,6 +922,12 @@
         updateLockUi();
         showError(t('errTaken'));
         loadSlots();
+      } else if (res && res.reason === 'full') {
+        // "Now" is not possible (next appointment booked / not enough time): show the free times.
+        state.nowFull = true;
+        updateLockUi();
+        if (state.mode === 'slots') loadSlots(); else enterSlotsMode();
+        showError(t('errNowFull'));
       } else {
         console.error('Request rejected:', res);
         updateLockUi();
@@ -913,6 +998,14 @@
   }
 
   function init() {
+    var flags = document.querySelectorAll('[data-flag]');
+    for (var f = 0; f < flags.length; f++) {
+      var flagSvg = typeof KIOSK_FLAGS !== 'undefined' && KIOSK_FLAGS[flags[f].getAttribute('data-flag')];
+      if (flagSvg) flags[f].innerHTML = flagSvg;
+    }
+    updateLanguageAvailability();
+    setInterval(updateLanguageAvailability, 30 * 1000);
+
     var langButtons = document.querySelectorAll('[data-lang]');
     for (var i = 0; i < langButtons.length; i++) {
       langButtons[i].addEventListener('click', function (e) {
