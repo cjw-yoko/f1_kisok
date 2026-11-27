@@ -25,9 +25,28 @@ Kostenlose Kiosk-Web-App für ein iPad am Eingang (1. Stock). Besucherinnen und 
 
      → **Name** (Pflicht) und **Firma** (optional) → „Anmelden“ → **„Herzlich willkommen! Bitte kommen Sie in den 3. Stock.“** Es gibt keinen Kalendereintrag.
    - **ZEPHI:** **Einlegesohlen** (45 Min. + 15 Min. je weitere Person) oder **Fußpflege** (60 Min. je Person) → Nachname + Personenzahl → **Jetzt anfragen** oder **Für später** (freie Zeiten von heute aus dem Kalender). **Einlegesohlen und Fußpflege teilen sich einen Kalender**, weil dieselbe Person für beides zuständig ist.
+     **„Jetzt anfragen“ prüft den Kalender:**
+     - Raum frei und genug Zeit bis zum nächsten Termin (45 bzw. 60 Min.) → „Wir kommen gleich zu Ihnen“
+     - gerade läuft eine Behandlung und das Zeitfenster direkt danach ist frei → **„Bitte nehmen Sie im Wartebereich im 2. Stock Platz“** mit voraussichtlicher Uhrzeit
+     - nächster Termin ebenfalls belegt, zu wenig Zeit bis zum nächsten Termin, Mittagspause oder außerhalb der Öffnungszeiten → **„Bitte buchen Sie eine andere Uhrzeit“**, die freien Zeiten erscheinen sofort
+
+     In den ersten beiden Fällen wird die Zeit im Kalender eingetragen (Titel mit `【当日】` bzw. `【待合室】`), damit der nächste Kunde richtig behandelt wird.
    - **Fotostudio:** wie bisher (Nachname, Personen, jetzt oder später, eigener Kalender).
-   - **Paketdienst:** Zusteller tippt sein Unternehmen an (ヤマト運輸, 佐川急便, 日本郵便, DHL …) oder „Anderes Unternehmen“ → **„수고하셨습니다!“**. Es gibt keinen Kalendereintrag.
-4. Bestätigung, nach 10 s zurück zum Start. Nach 45 s Inaktivität geht es ebenfalls zurück zum Start, und alle Eingaben werden gelöscht.
+   - **Paketdienst:** Zusteller tippt sein Unternehmen an (ヤマト運輸, 佐川急便, 日本郵便, DHL …) oder „Anderes Unternehmen“ → Begrüßung **in der gewählten Sprache** (수고하셨습니다! / お疲れ様です！ / Thank you for your hard work! / Vielen Dank für Ihre Mühe!) mit einem kurzen Willkommen. Niemand kommt herunter. Im Chat erscheint nur eine Info, kein Kalendereintrag.
+**Deutsch** ist Mo–Fr von 12:30 bis 17:00 ausgegraut („Zurzeit nicht verfügbar · bitte English wählen“), weil dann niemand Deutschsprachiges im Haus ist. Die Zeiten stehen in `config.js` unter `languageAvailability` (Uhr des iPads).
+4. Bestätigung, nach 10 s zurück zum Start. Nach 45 s Inaktivität geht es ebenfalls zurück zum Start, und alle Eingaben werden gelöscht. Nach einer gesendeten Anfrage sind die Buttons **10 s** gesperrt (`submitLockSeconds`).
+
+## Design, Logos und Icons
+
+- **Stil der YOKO-Website:**
+  - Farben: Papierweiß `#F7F6F3`, weiße Karten mit feinen Linien, Navy `#1E2E42`, Yoko-Rot `#DE3A2C`, Bronze für kleine Überschriften mit roter Raute
+  - Schriften: Shippori Mincho (japanische Überschriften), Cormorant Garamond und IBM Plex Sans (Englisch/Deutsch), Noto Serif KR (Koreanisch). Die Schriften kommen wie auf der Website von Google Fonts; ohne Internet nutzt das iPad die eingebauten Hiragino-Schriften.
+  - Alle Farben stehen als Variablen oben in `style.css`.
+- **Logos** (Ordner `icons/`):
+  - `yoko-logo.png`, `wys-logo.png`
+  - `zephi-logo.png`: der kursive ZEPHI-Schriftzug aus dem Logo-Vorschlag (PDF). Der ist allen vier Kandidaten A–D gemeinsam; sobald das Symbol entschieden ist, einfach die Datei ersetzen.
+  - `studio-logo.svg`: neues Fotostudio-Logo (Blende mit rotem Kern + „PHOTO STUDIO“), auch für andere Zwecke nutzbar.
+- **Icons und Flaggen** statt Emojis: eigene minimalistische SVGs in `icons.js` (Einlegesohle, Fußpflege, Paket, Fotostudio, runde Flaggen). In `config.js` steht nur der Schlüssel (`icon: 'insole'`); ein Emoji funktioniert dort weiterhin als Notlösung. In den **Chat-Nachrichten** bleiben die Emojis, weil das Team sie dort schneller erfasst.
 
 ## Chat-Nachrichten: damit niemand etwas übersieht
 
@@ -41,10 +60,11 @@ Kostenlose Kiosk-Web-App für ein iPad am Eingang (1. Stock). Besucherinnen und 
 |---|---|
 | Yoko, Besucher | **@alle** @Zuständige<br>**🏢 来客です｜YOKO｜研究開発部（R&D）**<br>山田 太郎様（株式会社サンプル）<br>→ 3階へご案内しました。担当の方は対応をお願いします。 |
 | WYS, „Sonstiges“, Englisch | **@alle**<br>**🏢 来客です｜WYS Relation｜その他**<br>John Smith様<br>🇬🇧 英語のお客様<br>⚠️ 担当部署が未定です。どなたか対応をお願いします。<br>→ 3階へご案内しました。… |
-| ZEPHI jetzt | **@alle** @Zuständige<br>**🔔 お客様がいらっしゃいました｜🦶 ZEPHI フットケア**<br>山田様（1名） |
+| ZEPHI jetzt (Raum frei) | **@alle** @Zuständige<br>**🔔 お客様がいらっしゃいました｜🦶 ZEPHI フットケア**<br>山田様（1名）<br>🗓 10:07–11:07 でカレンダーに登録しました |
+| ZEPHI jetzt (Behandlung läuft) | **@alle** @Zuständige<br>**⏳ 待合室でお待ちいただいています｜👟 ZEPHI インソール**<br>山田様（1名）<br>→ 2階の待合室にご案内しました。次の枠 10:45–11:30 をカレンダーに登録済みです。 |
 | ZEPHI später, Deutsch | **@alle** @Zuständige<br>**🕒 ご予約が入りました｜👟 ZEPHI インソール｜14:00–14:45**<br>Müller様（1名）<br>🇩🇪 ドイツ語の同行が必要です |
-| Fotostudio | wie ZEPHI, mit 📸 フォトスタジオ |
-| Paketdienst | **@alle**<br>**📦 配達業者が到着しました｜ヤマト運輸**<br>→ どなたか1階の受付で対応をお願いします。 |
+| Fotostudio | wie bisher: „jetzt“ nur Chat-Nachricht (ohne Kalenderprüfung), „später“ mit Kalendereintrag |
+| Paketdienst | **@alle**<br>**📦 配達業者が到着しました｜ヤマト運輸** (nur zur Info) |
 
 - Sprachzeile bei Diensten: Englisch und Deutsch → „同行が必要です“ (Begleitung nötig, `escortLanguages`), Koreanisch → „韓国語のお客様（対応可能）“, Japanisch → keine Zeile.
 - **Kalendertermin** („später“): Titel z. B. `🦶 ZEPHI フットケア｜山田様（1名）JA`. So sieht man im gemeinsamen Kalender sofort, ob es um Einlegesohlen oder Fußpflege geht. In der Beschreibung stehen Sprache und Begleitungsbedarf.
@@ -55,14 +75,31 @@ Kostenlose Kiosk-Web-App für ein iPad am Eingang (1. Stock). Besucherinnen und 
 
 ## Update auf diese Version
 
-Die App läuft bereits. **Erst das Backend, dann GitHub**, sonst zeigt das iPad kurz Kacheln, die das alte Backend noch ablehnt.
+Diese Version umfasst das neue Design im Stil der YOKO-Website, die Logos und Icons, die zeitabhängige Deutsch-Option sowie die Änderungen davor: Paketdienst-Begrüßung, 10 s Sperre und die „Jetzt“-Prüfung für ZEPHI.
 
-1. **Apps Script:** `Code.gs`, `Config.gs` (= neue `config.js`) und `Logic.gs` (= neue `logic.js`) komplett ersetzen → speichern. Die neue `config.js` enthält bereits eure echte `/exec`-URL und `dryRun: false`.
-2. **Script Properties:** `WEBHOOK_URL`, `CAL_ID_INSOLE` und `CAL_ID_STUDIO` bleiben. Optional die `MENTION_…`-Einträge setzen (siehe c) 4.). Nicht mehr verwendet werden `WEBHOOK_URL_INSOLE`, `WEBHOOK_URL_STUDIO`, `WEBHOOK_URL_YOKO`, `WEBHOOK_URL_OEM`/`_EC`/`_PARTNERSHIP` und `WEBHOOK_URL_DELIVERY`. Sie können gelöscht werden.
-3. Im Editor `testWebhook`, `testMentions`, `testVisit` und `testDelivery` ausführen und im Chat prüfen.
-4. **Bereitstellen → Bereitstellungen verwalten → ✏️ → Version: Neue Version → Bereitstellen** (die URL bleibt gleich).
-5. **GitHub:** ersetzen bzw. hochladen: `index.html`, `style.css`, `app.js`, `i18n.js`, `logic.js`, `config.js` und **neu** `icons/wys-logo.png` (`icons/yoko-logo.png` muss ebenfalls vorhanden sein).
-6. iPad: App im App-Umschalter schließen und neu öffnen (oder bis zu 10 Minuten warten).
+**1. Apps Script (zuerst!)**: drei Dateien ersetzen, jeweils einfügen (⌘A, ⌘V) und **speichern**, bevor du die nächste kopierst:
+
+```bash
+pbcopy < /Users/zinuchai/Desktop/IPAD_APP/apps-script/Code.gs
+```
+→ in **Code.gs**
+```bash
+pbcopy < /Users/zinuchai/Desktop/IPAD_APP/config.js
+```
+→ in **Config.gs**
+```bash
+pbcopy < /Users/zinuchai/Desktop/IPAD_APP/logic.js
+```
+→ in **Logic.gs**
+
+Kontrolle mit ⌘F: `bookNow_` in Code.gs, `languageAvailability` in Config.gs, `isLanguageAvailable` in Logic.gs. Danach **Bereitstellen → Bereitstellungen verwalten → ✏️ → Version: „Neue Version“ → Bereitstellen**.
+
+**2. GitHub:** diese Dateien hochladen → **Commit changes**:
+- `index.html`, `style.css`, `app.js`, `i18n.js`, `logic.js`, `config.js`
+- **neu:** `icons.js`
+- im Ordner `icons`: **neu** `zephi-logo.png` und `studio-logo.svg`
+
+**3. iPad:** App schließen und neu öffnen (GitHub-Cache bis 10 Min.).
 
 ## Projektstruktur
 
@@ -75,7 +112,8 @@ logic.js               Slot-Berechnung, Prüfungen, Texte – auch als „Logic.
 i18n.js                Alle UI-Texte (ja/en/ko/de)
 app.js                 UI-Steuerung: Screens, Timer, Sendesperre, API-Zugriff, Dry-Run
 manifest.webmanifest   Für „Zum Home-Bildschirm“
-icons/                 App-Icons, yoko-logo.png, wys-logo.png
+icons/                 App-Icons, yoko-logo.png, wys-logo.png, zephi-logo.png, studio-logo.svg
+icons.js               Minimalistische SVG-Icons und runde Flaggen
 apps-script/Code.gs          Backend (Chat-Texte als Konstanten ganz oben)
 apps-script/appsscript.json  Zeitzone Asia/Tokyo, Berechtigungen
 tests/run-tests.js     Tests für Slots, Prüfungen, Nachrichten und Backend
@@ -93,6 +131,7 @@ tests/run-tests.js     Tests für Slots, Prüfungen, Nachrichten und Backend
 - Freie Intervalle = Block minus **alle Termine im Kalender** minus die Zeit bis „jetzt + 15 Min.“. Einlegesohlen und Fußpflege lesen und schreiben denselben Kalender (`CAL_ID_INSOLE`), blockieren sich also gegenseitig.
 - Slots liegen direkt hintereinander und beginnen auf dem nächsten 15-Minuten-Raster. Es werden höchstens 8 angeboten, nur für heute, Zeitzone Asia/Tokyo.
 - Vor jeder Buchung prüft das Backend unter Sperre erneut. Ist die Zeit inzwischen belegt, heißt es „Dieser Termin wurde gerade vergeben“, und die Liste lädt neu.
+- **„Jetzt“ bei ZEPHI** (`nowCheck: true`): Läuft gerade kein Termin, muss das Fenster *jetzt bis jetzt + Dauer* frei sein und in einem Öffnungsblock liegen. Läuft gerade ein Termin, gilt dasselbe für das Fenster *Ende des laufenden Termins bis + Dauer*. Dann wartet der Kunde im Wartebereich (`waitFloor: 2`). Ist das Fenster nicht frei, erscheint „Bitte buchen Sie eine andere Uhrzeit“. Ohne `nowCheck` (Fotostudio) bleibt „Jetzt“ eine reine Chat-Nachricht.
 - **Termin löschen = Slot frei:** Termin im Kalender löschen, dann ist die Zeit sofort wieder buchbar. Ein eigener Termin (z. B. „Pause“) oder ein ganztägiger Termin („geschlossen“) blockiert die Zeit.
 
 ---
