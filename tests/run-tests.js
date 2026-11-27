@@ -10,6 +10,7 @@ var console = { log: function () {}, error: function () {}, info: function () {}
 load('config.js');
 load('i18n.js');
 load('logic.js');
+load('icons.js');
 
 var passed = 0, failed = 0;
 function eq(actual, expected, label) {
@@ -141,8 +142,42 @@ eq(L.buildChatMessage({ lang: 'ko', type: 'now', name: '김', persons: 1 }, foot
 var noEscort = clone(insole); noEscort.escortLanguages = [];
 eq(L.buildChatMessage({ lang: 'en', type: 'now', name: 'Smith', persons: 1 }, noEscort, T).split('\n')[2], '🇬🇧 英語のお客様',
   'escortLanguages decides: en without escort -> info line');
-eq(L.buildEventTitle({ lang: 'de', name: 'Müller', persons: 2 }, insole, T), '👟 ZEPHI インソール｜Müller様（2名）DE', 'event title shows the service');
-eq(L.buildEventTitle({ lang: 'ja', name: '山田', persons: 1 }, footcare, T), '🦶 ZEPHI フットケア｜山田様（1名）JA', 'foot care event title');
+eq(L.buildEventTitle({ lang: 'de', type: 'later', name: 'Müller', persons: 2 }, insole, T), '👟 ZEPHI インソール｜Müller様（2名）DE', 'event title shows the service');
+eq(L.buildEventTitle({ lang: 'ja', type: 'later', name: '山田', persons: 1 }, footcare, T), '🦶 ZEPHI フットケア｜山田様（1名）JA', 'foot care event title');
+eq(L.buildEventTitle({ lang: 'ja', type: 'now', mode: 'now', name: '山田', persons: 1 }, insole, T), '【当日】👟 ZEPHI インソール｜山田様（1名）JA', 'same-day "now" event is tagged');
+eq(L.buildEventTitle({ lang: 'ja', type: 'now', mode: 'wait', name: '山田', persons: 1 }, insole, T), '【待合室】👟 ZEPHI インソール｜山田様（1名）JA', 'waiting-area event is tagged');
+eq(L.buildChatMessage({ lang: 'de', type: 'now', mode: 'now', name: 'Müller', persons: 1, start: '10:07', end: '10:52' }, insole, T),
+  '*🔔 お客様がいらっしゃいました｜👟 ZEPHI インソール*\nMüller様（1名）\n🇩🇪 ドイツ語の同行が必要です\n🗓 10:07–10:52 でカレンダーに登録しました', 'ZEPHI now message with calendar line');
+eq(L.buildChatMessage({ lang: 'ja', type: 'now', mode: 'wait', name: '山田', persons: 1, start: '10:45', end: '11:45' }, footcare, T),
+  '*⏳ 待合室でお待ちいただいています｜🦶 ZEPHI フットケア*\n山田様（1名）\n→ 2階の待合室にご案内しました。次の枠 10:45–11:45 をカレンダーに登録済みです。', 'waiting-area message');
+
+/* =================== "now" decision (ZEPHI) =================== */
+function decide(service, persons, now, busy) {
+  var d = L.decideNow({
+    blocks: service.openingBlocks,
+    busy: (busy || []).map(function (b) { var p = b.split('-'); return { start: m(p[0]), end: m(p[1]) }; }),
+    nowMinutes: m(now),
+    durationMinutes: L.durationFor(service, persons)
+  });
+  return d.mode === 'full' ? 'full' : d.mode + ' ' + L.formatHHMM(d.start) + '-' + L.formatHHMM(d.end);
+}
+eq(decide(insole, 1, '10:07'), 'now 10:07-10:52', 'room free, 45 min fit -> now');
+eq(decide(insole, 1, '10:07', ['10:30-11:15']), 'full', 'room free, but next booking in 23 min (< 45) -> book another time');
+eq(decide(insole, 1, '10:07', ['10:52-11:30']), 'now 10:07-10:52', 'next booking exactly after 45 min -> now');
+eq(decide(insole, 1, '10:07', ['09:45-10:30']), 'wait 10:30-11:15', 'someone is being served, next slot free -> waiting area');
+eq(decide(insole, 1, '10:07', ['09:45-10:30', '10:30-11:15']), 'full', 'someone is being served and the next slot is booked -> book another time');
+eq(decide(insole, 1, '10:07', ['09:45-10:30', '11:00-11:30']), 'full', 'after the current appointment less than 45 min until the next -> book another time');
+eq(decide(footcare, 1, '10:07', ['09:45-10:30']), 'wait 10:30-11:30', 'foot care: same rules with 60 min');
+eq(decide(footcare, 1, '10:07', ['09:45-10:30', '11:15-12:00']), 'full', 'foot care: 45 min gap is too short for 60 min');
+eq(decide(footcare, 1, '10:07', ['10:45-11:00']), 'full', 'foot care: room free but only 38 min -> book another time');
+eq(decide(insole, 2, '10:07', ['10:52-11:30']), 'full', '2 persons need 60 min');
+eq(decide(insole, 1, '11:30'), 'full', 'would run into the lunch break -> book another time');
+eq(decide(insole, 1, '11:40', ['11:00-11:45']), 'full', 'appointment ends 11:45, next slot would cross lunch -> book another time');
+eq(decide(insole, 1, '12:30'), 'full', 'during lunch break -> book another time');
+eq(decide(insole, 1, '08:30'), 'full', 'before opening -> book another time');
+eq(decide(insole, 1, '17:20'), 'full', 'too late for 45 min before 18:00');
+eq(decide(insole, 1, '10:07', ['10:00-10:07']), 'now 10:07-10:52', 'appointment ended exactly now -> room is free');
+eq(decide(insole, 1, '10:07', ['00:00-24:00']), 'full', 'closed all day');
 eq(L.buildEventDescription({ lang: 'ko' }, insole, T), '言語: 韓国語（KO）\n同行: 不要', 'event description ko');
 eq(L.buildEventDescription({ lang: 'de' }, insole, T), '言語: ドイツ語（DE）\n同行: 必要', 'event description de');
 
@@ -175,10 +210,32 @@ eq(KIOSK_I18N.de.confirmVisit(3), 'Bitte kommen Sie in den 3. Stock (3F). Wir ha
 eq([KIOSK_I18N.ja.confirmVisit(3).indexOf('3階') === 0, KIOSK_I18N.en.confirmVisit(3).indexOf('3rd floor (3F)') !== -1, KIOSK_I18N.ko.confirmVisit(3).indexOf('3층') === 0],
   [true, true, true], 'floor text in ja / en / ko');
 eq([KIOSK_I18N.de.welcome, KIOSK_I18N.de.servicesTitle], ['Willkommen', 'Bitte wählen Sie Ihren gewünschten Service'], 'menu heading (de)');
-eq(cfg.delivery.greeting, '수고하셨습니다!', 'delivery greeting');
+eq([KIOSK_I18N.ko.deliveryGreeting, KIOSK_I18N.ja.deliveryGreeting, KIOSK_I18N.en.deliveryGreeting, KIOSK_I18N.de.deliveryGreeting],
+  ['수고하셨습니다!', 'お疲れ様です！', 'Thank you for your hard work!', 'Vielen Dank für Ihre Mühe!'], 'delivery greeting in the chosen language');
+eq(/kommt jemand|Someone will|잠시만|少々お待ち/.test([KIOSK_I18N.de.confirmDelivery, KIOSK_I18N.en.confirmDelivery, KIOSK_I18N.ko.confirmDelivery, KIOSK_I18N.ja.confirmDelivery].join(' ')), false,
+  'delivery: nobody comes down (no "please wait" text)');
+eq(cfg.submitLockSeconds, 10, 'lock between requests: 10 s');
 cfg.services.forEach(function (s) {
   eq(L.LANGS.every(function (l) { return typeof s.name[l] === 'string' && s.name[l].length > 0; }), true, 'service names complete: ' + s.id);
 });
+
+/* =================== German only when available (weekdays not 12:30–17:00) =================== */
+function at(dayOfMonth, hhmm) { var p = hhmm.split(':'); return new Date(2026, 10, dayOfMonth, +p[0], +p[1]); } // Nov 2026: 23 = Monday
+eq(['12:29', '12:30', '14:00', '16:59', '17:00'].map(function (t) { return L.isLanguageAvailable(cfg, 'de', at(23, t)); }),
+  [true, false, false, false, true], 'German: Monday unavailable 12:30–16:59');
+eq([24, 25, 26, 27].map(function (d) { return L.isLanguageAvailable(cfg, 'de', at(d, '13:00')); }), [false, false, false, false], 'German: Tue–Fri 13:00 unavailable');
+eq([28, 29].map(function (d) { return L.isLanguageAvailable(cfg, 'de', at(d, '13:00')); }), [true, true], 'German: Saturday / Sunday available');
+eq(['ja', 'en', 'ko'].map(function (l) { return L.isLanguageAvailable(cfg, l, at(23, '13:00')); }), [true, true, true], 'other languages always available');
+eq(L.isLanguageAvailable({}, 'de', at(23, '13:00')), true, 'no rules -> available');
+eq(typeof cfg.languageAvailability.de.note === 'string' && cfg.languageAvailability.de.note.length > 0, true, 'German note text configured');
+
+/* =================== icons and logos =================== */
+cfg.services.forEach(function (sv) { eq(!!KIOSK_ICONS[sv.icon], true, 'SVG icon exists for service ' + sv.id); });
+eq(!!KIOSK_ICONS[cfg.delivery.icon], true, 'SVG icon exists for delivery');
+eq(['ja', 'en', 'ko', 'de'].every(function (l) { return KIOSK_FLAGS[l].indexOf('<svg') === 0; }), true, 'round SVG flags for all languages');
+eq(/[\u{1F300}-\u{1FAFF}]/u.test(JSON.stringify([cfg.services, cfg.serviceGroups, cfg.delivery.icon])), false, 'no emoji icons in the UI config');
+eq(L.buildChatMessage({ lang: 'ja', type: 'now', name: 'A', persons: 1 }, { id: 'x', name: { ja: 'テスト' }, escortLanguages: [] }, { now: '{service}', escortNote: {}, infoNote: {} }),
+  'テスト', 'chat fallback label uses the Japanese name (no icon key)');
 
 /* =================== backend (Code.gs) with stubs =================== */
 var TOKYO_OFFSET = 9 * 3600 * 1000;
@@ -331,14 +388,24 @@ eq(slotList(get({ action: 'slots', service: 'insole', persons: '1' }))[4], '13:0
 eq(post({ lang: 'ko', service: 'insole', type: 'later', name: '김', persons: 1, start: '13:00' }).ok, true, 'slot bookable again');
 eq(calendars['cal-insole'].events[0].description, '言語: 韓国語（KO）\n同行: 不要', 'ko event: no escort');
 
-// --- "now"
+// --- "now": ZEPHI checks the calendar, photo studio does not
 resetBackend();
-eq(post({ lang: 'ko', service: 'insole', type: 'now', name: '김', persons: 1 }), { ok: true }, 'now ok');
-eq(fetchCalls[0].text, '<users/all>\n*🔔 お客様がいらっしゃいました｜👟 ZEPHI インソール*\n김様（1名）\n🇰🇷 韓国語のお客様（対応可能）', 'now ko message');
-eq(calendars['cal-insole'].events.length, 0, 'now: no calendar entry');
+currentTime = tokyo('10:07');
+eq(post({ lang: 'ko', service: 'insole', type: 'now', name: '김', persons: 1 }), { ok: true, mode: 'now', start: '10:07', end: '10:52', notified: true }, 'ZEPHI now: room free -> served now');
+eq(fetchCalls[0].text, '<users/all>\n*🔔 お客様がいらっしゃいました｜👟 ZEPHI インソール*\n김様（1名）\n🇰🇷 韓国語のお客様（対応可能）\n🗓 10:07–10:52 でカレンダーに登録しました', 'now ko message');
+eq([calendars['cal-insole'].events.length, calendars['cal-insole'].events[0].title], [1, '【当日】👟 ZEPHI インソール｜김様（1名）KO'], 'now: entered in the calendar so the next request knows');
+currentTime = tokyo('10:20');
+eq(post({ lang: 'ja', service: 'footcare', type: 'now', name: '山田', persons: 1 }), { ok: true, mode: 'wait', start: '10:52', end: '11:52', notified: true }, 'someone is being served -> waiting area, next slot');
+eq(fetchCalls[1].text.split('\n')[1], '*⏳ 待合室でお待ちいただいています｜🦶 ZEPHI フットケア*', 'waiting-area chat headline');
+eq(calendars['cal-insole'].events[1].title, '【待合室】🦶 ZEPHI フットケア｜山田様（1名）JA', 'waiting-area calendar entry');
+eq(post({ lang: 'ja', service: 'insole', type: 'now', name: '佐藤', persons: 1 }), { ok: false, reason: 'full' }, 'served now and next slot booked -> full (book another time)');
+eq([calendars['cal-insole'].events.length, fetchCalls.length], [2, 2], 'full: no event, no chat message');
+eq(slotList(get({ action: 'slots', service: 'insole', persons: '1' }))[0], '13:00-13:45', 'slots skip the now / waiting entries');
+currentTime = tokyo('08:00');
 addBusy('cal-studio', '00:00', '23:59');
 eq(post({ lang: 'ja', service: 'studio', type: 'now', name: '山田', persons: 3 }).ok, true, 'now ignores slots (team decides)');
-eq(fetchCalls[1].text, '<users/all>\n*🔔 お客様がいらっしゃいました｜📸 フォトスタジオ*\n山田様（3名）', 'now ja studio message');
+eq(fetchCalls[fetchCalls.length - 1].text, '<users/all>\n*🔔 お客様がいらっしゃいました｜📸 フォトスタジオ*\n山田様（3名）', 'photo studio now: chat only, as before');
+eq(calendars['cal-studio'].events.length, 1, 'photo studio now: no new calendar entry (only the all-day test event)');
 
 // --- validation: nothing is sent or booked
 resetBackend();
@@ -370,13 +437,13 @@ eq([fetchCalls.length, calendars['cal-insole'].events.length], [0, 0], 'no webho
 
 // --- duplicates and idempotency
 resetBackend();
-eq(post({ lang: 'de', service: 'insole', type: 'now', name: 'Müller', persons: 1 }).ok, true, 'first request');
-eq(post({ lang: 'de', service: 'insole', type: 'later', name: 'müller', persons: 1, start: '13:00' }), { ok: true, duplicate: true },
+eq(post({ lang: 'de', service: 'studio', type: 'now', name: 'Müller', persons: 1 }).ok, true, 'first request');
+eq(post({ lang: 'de', service: 'studio', type: 'later', name: 'müller', persons: 1, start: '13:00' }), { ok: true, duplicate: true },
   'same name + service within 30 s ignored (case-insensitive, any type)');
-eq([fetchCalls.length, calendars['cal-insole'].events.length], [1, 0], 'duplicate: no webhook, no event');
-eq(post({ lang: 'de', service: 'studio', type: 'now', name: 'Müller', persons: 1 }).ok, true, 'same name, other service is fine');
+eq([fetchCalls.length, calendars['cal-studio'].events.length], [1, 0], 'duplicate: no webhook, no event');
+eq(post({ lang: 'de', service: 'insole', type: 'later', name: 'Müller', persons: 1, start: '13:00' }).ok, true, 'same name, other service is fine');
 cacheStore = {}; // window expired
-eq(post({ lang: 'de', service: 'insole', type: 'now', name: 'Müller', persons: 1 }), { ok: true }, 'after the window: sent again');
+eq(post({ lang: 'de', service: 'studio', type: 'now', name: 'Müller', persons: 1 }), { ok: true }, 'after the window: sent again');
 
 resetBackend();
 var payload = { requestId: 'abcdef12-3456', lang: 'en', service: 'insole', type: 'later', name: 'Brown', persons: 1, start: '09:00' };
@@ -397,21 +464,21 @@ eq(fetchCalls.map(function (c) { return c.url.indexOf('/AAA/') !== -1; }), [true
 
 resetBackend();
 delete props.WEBHOOK_URL;
-eq(post({ lang: 'ja', service: 'insole', type: 'now', name: 'A', persons: 1 }).reason, 'notify_failed', 'now without webhook -> notify_failed');
+eq(post({ lang: 'ja', service: 'studio', type: 'now', name: 'A', persons: 1 }).reason, 'notify_failed', 'now without webhook -> notify_failed');
 eq(post({ lang: 'ja', service: 'insole', type: 'later', name: 'B', persons: 1, start: '09:00' }), { ok: true, start: '09:00', end: '09:45', notified: false },
   'later: booking stays even if the chat message fails');
 props.WEBHOOK_URL = 'https://chat.googleapis.com/v1/spaces/AAA/messages?key=k&token=t';
 webhookStatus = 500;
-eq(post({ lang: 'ja', service: 'insole', type: 'now', name: 'C', persons: 1 }).reason, 'notify_failed', 'webhook HTTP 500 -> notify_failed');
+eq(post({ lang: 'ja', service: 'studio', type: 'now', name: 'C', persons: 1 }).reason, 'notify_failed', 'webhook HTTP 500 -> notify_failed');
 webhookStatus = 200;
-eq(post({ lang: 'ja', service: 'insole', type: 'now', name: 'C', persons: 1 }).ok, true, 'failed send is not marked as duplicate');
+eq(post({ lang: 'ja', service: 'studio', type: 'now', name: 'C', persons: 1 }).ok, true, 'failed send is not marked as duplicate');
 
 // --- rate limit
 resetBackend();
 var limited = 0;
 for (var i = 0; i < 35; i++) {
   var nm = 'Rate' + 'abcdefg'.charAt(i % 7) + 'abcde'.charAt(Math.floor(i / 7));
-  if (post({ lang: 'ja', service: 'insole', type: 'now', name: nm, persons: 1 }).reason === 'rate_limited') limited++;
+  if (post({ lang: 'ja', service: 'studio', type: 'now', name: nm, persons: 1 }).reason === 'rate_limited') limited++;
 }
 eq(limited, 5, 'rate limit: 30 per window');
 
@@ -432,6 +499,7 @@ eq(post({ lang: 'ja', service: 'footcare', type: 'later', name: '鈴木', person
 resetBackend();
 props.MENTION_ZEPHI = 'users/111';
 props.MENTION_STUDIO = 'not-a-user';
+currentTime = tokyo('10:00');
 post({ lang: 'ja', service: 'insole', type: 'now', name: 'A', persons: 1 });
 post({ lang: 'ja', service: 'footcare', type: 'now', name: 'B', persons: 1 });
 post({ lang: 'ja', service: 'studio', type: 'now', name: 'C', persons: 1 });
@@ -441,6 +509,7 @@ CHAT_TEXT.everyone = '';
 post({ lang: 'ja', service: 'studio', type: 'now', name: 'D', persons: 1 });
 eq(fetchCalls[3].text.indexOf('*🔔') === 0, true, '@all can be switched off (CHAT_TEXT.everyone = "")');
 CHAT_TEXT.everyone = '<users/all>';
+currentTime = tokyo('08:00');
 
 /* =================== visitors (Yoko / WYS Relation) =================== */
 function vr(d) { return L.validateRequest(d, cfg); }
@@ -490,7 +559,7 @@ eq(L.validateCompany('Muster GmbH & Co. KG', 60, false).ok && L.validateCompany(
 resetBackend();
 props.MENTION_DELIVERY = 'users/333';
 eq(post({ requestId: 'delivery-0001', kind: 'delivery', lang: 'en', carrier: 'yamato' }), { ok: true }, 'delivery ok');
-eq(fetchCalls[0].text, '<users/all> <users/333>\n*📦 配達業者が到着しました｜ヤマト運輸*\n→ どなたか1階の受付で対応をお願いします。', 'delivery message');
+eq(fetchCalls[0].text, '<users/all> <users/333>\n*📦 配達業者が到着しました｜ヤマト運輸*', 'delivery message (information only)');
 eq(post({ kind: 'delivery', lang: 'ja', carrier: 'yamato' }), { ok: true, duplicate: true }, 'same carrier within 30 s ignored');
 eq(post({ kind: 'delivery', lang: 'ja', carrier: 'other', company: 'Spedition Muster' }).ok, true, 'other company');
 eq(fetchCalls[1].text.split('\n')[1], '*📦 配達業者が到着しました｜Spedition Muster*', 'other company message');

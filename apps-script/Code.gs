@@ -19,7 +19,7 @@
  *     service:  {requestId, lang, service, type: 'now'|'later', name, persons, start?}
  *     visit:    {requestId, lang, kind: 'visit', host, department, name, company?}
  *     delivery: {requestId, lang, kind: 'delivery', carrier, company?}
- *     -> {ok:true, start?, end?} | {ok:false, reason:'taken'|'invalid'|...}
+ *     -> {ok:true, mode?: 'now'|'wait', start?, end?} | {ok:false, reason:'taken'|'full'|'invalid'|...}
  *   JSONP fallback: add &callback=fn to a GET; requests via GET ?action=book&data=<JSON>
  *
  * Privacy: "later" bookings create a calendar event (name, time, persons,
@@ -43,6 +43,10 @@ var CHAT_TEXT = {
   // Services (ZEPHI insoles / foot care, photo studio)
   now: '*🔔 お客様がいらっしゃいました｜{service}*\n{name}様（{persons}名）',
   later: '*🕒 ご予約が入りました｜{service}｜{start}–{end}*\n{name}様（{persons}名）',
+  // "Now" with calendar check (services with nowCheck: ZEPHI):
+  nowBooked: '🗓 {start}–{end} でカレンダーに登録しました',
+  wait: '*⏳ 待合室でお待ちいただいています｜{service}*\n{name}様（{persons}名）',
+  waitBooked: '→ {floor}階の待合室にご案内しました。次の枠 {start}–{end} をカレンダーに登録済みです。',
   serviceLabel: { insole: '👟 ZEPHI インソール', footcare: '🦶 ZEPHI フットケア', studio: '📸 フォトスタジオ' },
   // Extra line if the language is in the service's escortLanguages ...
   escortNote: {
@@ -56,8 +60,10 @@ var CHAT_TEXT = {
     de: '🇩🇪 ドイツ語のお客様',
     ko: '🇰🇷 韓国語のお客様（対応可能）'
   },
-  // Calendar event for "later" bookings (shared insole/foot care calendar shows the service)
-  eventTitle: '{service}｜{name}様（{persons}名）{langCode}',
+  // Calendar event (shared insole/foot care calendar shows the service).
+  // {tag}: eventTag of "later" / same-day "now" / "wait" (waiting area) entries.
+  eventTitle: '{tag}{service}｜{name}様（{persons}名）{langCode}',
+  eventTag: { later: '', now: '【当日】', wait: '【待合室】' },
   eventDescription: '言語: {langName}（{langCode}）\n同行: {escort}',
   escortYes: '必要',
   escortNo: '不要',
@@ -71,8 +77,8 @@ var CHAT_TEXT = {
   visitFooter: '→ {floor}階へご案内しました。担当の方は対応をお願いします。',
   companyLabel: { yoko: 'YOKO', wys: 'WYS Relation' },
 
-  // Parcel services
-  delivery: '*📦 配達業者が到着しました｜{company}*\n→ どなたか1階の受付で対応をお願いします。'
+  // Parcel services (information only – nobody has to come down)
+  delivery: '*📦 配達業者が到着しました｜{company}*'
 };
 
 var SETTINGS = {
@@ -162,9 +168,40 @@ function dispatch_(req) {
     return notify_(req) ? { ok: true } : { ok: false, reason: 'notify_failed' };
   }
   var service = KioskLogic.findService(KIOSK_CONFIG, req.service);
-  // "now": chat message only – no calendar entry, no slot check (the team decides on site).
-  if (req.type !== 'later') return notify_(req) ? { ok: true } : { ok: false, reason: 'notify_failed' };
-  return bookLater_(req, service);
+  if (req.type === 'later') return bookLater_(req, service);
+  if (service.nowCheck) return bookNow_(req, service);
+  // "now" without check (photo studio): chat message only, the team decides on site.
+  return notify_(req) ? { ok: true } : { ok: false, reason: 'notify_failed' };
+}
+
+/**
+ * "now" with calendar check (ZEPHI): served right away, waiting area after the
+ * current appointment, or {reason:'full'} (please book another time).
+ * The time is entered in the calendar so the next request knows the room is busy.
+ */
+function bookNow_(req, service) {
+  var day = today_();
+  var calendar = getCalendar_(service);
+  var duration = KioskLogic.durationFor(service, req.persons);
+  var decision = KioskLogic.decideNow({
+    blocks: service.openingBlocks,
+    busy: busyIntervals_(calendar, day),
+    nowMinutes: day.nowMinutes,
+    durationMinutes: duration
+  });
+  if (decision.mode === 'full') return { ok: false, reason: 'full' };
+
+  var full = { kind: 'service', lang: req.lang, service: service.id, type: 'now', mode: decision.mode,
+               name: req.name, persons: req.persons,
+               start: KioskLogic.formatHHMM(decision.start), end: KioskLogic.formatHHMM(decision.end) };
+  calendar.createEvent(
+    KioskLogic.buildEventTitle(full, service, CHAT_TEXT),
+    dateAt_(day.ymd, decision.start),
+    dateAt_(day.ymd, decision.end),
+    { description: KioskLogic.buildEventDescription(full, service, CHAT_TEXT) }
+  );
+  var notified = notify_(full);
+  return { ok: true, mode: decision.mode, start: full.start, end: full.end, notified: notified };
 }
 
 function handleRequest_(data) {
